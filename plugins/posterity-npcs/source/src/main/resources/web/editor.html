@@ -1,0 +1,694 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Build Planner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Pixelify+Sans:wght@500;700&display=swap">
+<style>
+/* Layout: one-screen workbench. The 3D hall fills the left, a tabbed panel on the right (stacked below on phones). */
+:root {
+  --bg: #eef0ee;          /* birch-pale ground */
+  --panel: #f8f9f7;
+  --ink: #1d2226;          /* deepslate ink */
+  --muted: #5d676d;
+  --line: #d3d8d5;
+  --accent: #128a4c;       /* emerald */
+  --accent-ink: #ffffff;
+  --warn: #b5651d;
+  --bad: #b3362f;
+  --chip: #e4e8e5;
+  --scene: #c9d3d6;
+  --display: "Pixelify Sans", "Courier New", monospace;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15191c; --panel: #1c2125; --ink: #e7ebe8; --muted: #9aa5ab; --line: #2f363b;
+    --accent: #2fbf71; --accent-ink: #0b1a11; --warn: #e09a52; --bad: #ef6f66; --chip: #262c31; --scene: #1f2529;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #15191c; --panel: #1c2125; --ink: #e7ebe8; --muted: #9aa5ab; --line: #2f363b;
+  --accent: #2fbf71; --accent-ink: #0b1a11; --warn: #e09a52; --bad: #ef6f66; --chip: #262c31; --scene: #1f2529;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 14px; line-height: 1.45; overflow: hidden; }
+.app { height: 100%; display: grid; grid-template-columns: minmax(0, 1fr) 390px; grid-template-rows: auto minmax(0, 1fr); }
+header { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding-block: 10px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  border-bottom: 1px solid var(--line); background: var(--panel); }
+h1 { font-family: var(--display); font-weight: 700; font-size: 20px; margin: 0; letter-spacing: .02em; }
+.sub { color: var(--muted); font-size: 12px; font-family: var(--mono); }
+select { font: inherit; font-size: 13px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 6px; padding: 5px 8px; }
+a.btn { text-decoration: none; }
+.pill { margin-left: auto; font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 99px; background: var(--chip); color: var(--muted); white-space: nowrap; }
+.pill.ready { background: var(--accent); color: var(--accent-ink); }
+.pill.draft { color: var(--warn); }
+.stage { position: relative; min-width: 0; min-height: 0; background: var(--scene); }
+#gl { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+.hud { position: absolute; top: 12px; left: 12px; right: 12px; display: flex; flex-wrap: wrap; gap: 8px; pointer-events: none; }
+.hud > * { pointer-events: auto; }
+.box { background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: flex; align-items: center; gap: 8px; }
+.box label { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 6px; cursor: pointer; }
+#cut { width: 140px; accent-color: var(--accent); }
+#cutv { font-family: var(--mono); font-size: 12px; min-width: 4.5em; font-variant-numeric: tabular-nums; }
+.modes { display: flex; gap: 4px; }
+.modes button, .btn { font: inherit; font-size: 13px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+.modes button[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); font-weight: 600; }
+.btn:disabled { opacity: .5; cursor: default; }
+button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tip { position: absolute; left: 12px; bottom: 12px; right: 12px; pointer-events: none; display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.tip span { background: color-mix(in srgb, var(--panel) 92%, transparent); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; font-family: var(--mono); font-size: 12px; }
+aside { border-left: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+.tabs { display: flex; border-bottom: 1px solid var(--line); }
+.tabs button { flex: 1; font: inherit; font-weight: 600; font-size: 13px; padding: 10px 6px; background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); cursor: pointer; }
+.tabs button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.tab { overflow-y: auto; padding: 14px 16px 24px; display: flex; flex-direction: column; gap: 12px; min-height: 0; flex: 1; }
+.tab[hidden] { display: none !important; }
+h2 { font-size: 15px; margin: 0; text-wrap: balance; }
+.card { border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.card.on { border-color: var(--accent); }
+.kind { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600; }
+.kind.build { color: var(--accent); }
+.kind.ok { color: var(--muted); }
+.card p { margin: 0; color: var(--muted); }
+.row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+code, .cmd { font-family: var(--mono); font-size: 12px; }
+.cmd { background: var(--chip); border-radius: 5px; padding: 6px 8px; display: flex; justify-content: space-between; gap: 8px; align-items: center; overflow-wrap: anywhere; }
+.cmd button { font: inherit; font-size: 11px; border: 0; background: none; color: var(--accent); cursor: pointer; font-weight: 600; white-space: nowrap; }
+.vill { border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; cursor: pointer; }
+.vill.sel { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.vill .hd { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.vill .job { font-weight: 600; }
+.vill .where { font-family: var(--mono); font-size: 11px; color: var(--muted); white-space: nowrap; }
+.vill ul { margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.vill li { font-size: 12.5px; display: flex; justify-content: space-between; gap: 8px; }
+.vill li .pr { color: var(--muted); font-family: var(--mono); font-size: 11.5px; white-space: nowrap; }
+.vill li.book .it { color: var(--accent); font-weight: 600; }
+.tag { font-size: 11px; padding: 1px 6px; border-radius: 4px; background: var(--chip); color: var(--muted); }
+.tag.lock { color: var(--warn); }
+.filter { display: flex; gap: 6px; }
+input[type=search], textarea { font: inherit; border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 6px; padding: 7px 9px; width: 100%; }
+.blocks { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 6px; max-height: 220px; overflow-y: auto; padding: 2px; }
+.blk { display: flex; align-items: center; gap: 6px; font-size: 12px; border: 1px solid var(--line); border-radius: 6px; padding: 5px 6px; background: var(--panel); color: var(--ink); cursor: pointer; text-align: left; font-family: inherit; min-width: 0; }
+.blk span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.blk[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.sw { width: 14px; height: 14px; border-radius: 3px; flex: none; border: 1px solid rgba(0,0,0,.25); }
+.edits { font-family: var(--mono); font-size: 12px; display: flex; flex-direction: column; gap: 2px; max-height: 180px; overflow-y: auto; }
+.edits div { display: flex; justify-content: space-between; gap: 8px; }
+.edits .add { color: var(--accent); } .edits .del { color: var(--bad); }
+.note { font-size: 12px; color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; color: var(--muted); }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+@media (max-width: 760px) {
+  body { overflow: auto; }
+  .app { height: auto; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 58vh auto; }
+  aside { border-left: 0; border-top: 1px solid var(--line); }
+  .tab { overflow: visible; }
+  #cut { width: 100px; }
+}
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Build Planner</h1>
+    <label class="sub" for="builder">for</label>
+    <select id="builder" aria-label="Builder"></select>
+    <span class="sub" id="snap">Loading…</span>
+    <button class="btn" id="reload" type="button" title="Load the world again round the middle of the view">Load around here</button>
+    <select id="radius" aria-label="How far round"><option value="16">16 blocks</option><option value="24" selected>24 blocks</option><option value="32">32 blocks</option><option value="48">48 blocks</option></select>
+    <a class="btn" id="bluemap" href="../">Map</a>
+    <span class="pill" id="status">Loading plan…</span>
+  </header>
+
+  <div class="stage">
+    <canvas id="gl" aria-label="3D model of the trading hall"></canvas>
+    <div class="hud">
+      <div class="box">
+        <label for="cut">Up to</label>
+        <input type="range" id="cut" min="44" max="76" value="76">
+        <span id="cutv"></span>
+      </div>
+      <div class="box">
+        <label><input type="checkbox" id="ground"> Ground</label>
+        <label><input type="checkbox" id="showv" checked> Villagers</label>
+        <label><input type="checkbox" id="showtodo" checked> Still to build</label>
+      </div>
+      <div class="box modes" role="group" aria-label="Tool">
+        <button type="button" id="m-look" aria-pressed="true">Look</button>
+        <button type="button" id="m-place" aria-pressed="false">Place</button>
+        <button type="button" id="m-break" aria-pressed="false">Break</button>
+      </div>
+    </div>
+    <div class="tip"><span id="hover">Drag to turn, scroll to zoom, right-drag to pan</span><span id="toolhint"></span></div>
+  </div>
+
+  <aside>
+    <div class="tabs" role="tablist">
+      <button role="tab" id="t-up" aria-selected="true" aria-controls="p-up">Upgrades</button>
+      <button role="tab" id="t-vi" aria-selected="false" aria-controls="p-vi">Villagers</button>
+      <button role="tab" id="t-ed" aria-selected="false" aria-controls="p-ed">Your changes</button>
+    </div>
+    <section class="tab" id="p-up" role="tabpanel"></section>
+    <section class="tab" id="p-vi" role="tabpanel" hidden>
+      <div class="filter"><input type="search" id="vq" placeholder="Find a trade: mending, bow, emerald…" aria-label="Find a trade"></div>
+      <div class="legend" id="legend"></div>
+      <div id="vlist" style="display:flex;flex-direction:column;gap:8px"></div>
+    </section>
+    <section class="tab" id="p-ed" role="tabpanel" hidden>
+      <h2>Block to place</h2>
+      <input type="search" id="bq" placeholder="Search blocks" aria-label="Search blocks">
+      <div class="blocks" id="blocks"></div>
+      <p class="note">Place adds the block next to the face you click. Break plans clearing the block you click. Click a planned block again in the same mode to undo it. Fences, ladders and doors face the right way when the blueprint is made.</p>
+      <div class="row" style="justify-content:space-between"><h2 id="ecount">No changes yet</h2>
+        <div class="row"><button class="btn" id="undo" type="button">Undo</button><button class="btn" id="clear" type="button">Clear all</button></div></div>
+      <div class="edits" id="elist"></div>
+      <p class="note" id="todolabel"></p>
+      <label class="note" for="enote">Note (optional, for yourself)</label>
+      <textarea id="enote" rows="2" placeholder="e.g. birch for the floor, spruce for the trim"></textarea>
+      <label class="note"><input type="checkbox" id="startnow" checked> Start building as soon as it's sent</label>
+      <button class="btn primary" id="send" type="button">Send to the builder</button>
+      <p class="note" id="sendnote">Your changes save as you go. Sending puts them in the builder's plan (only these blocks; the rest is left alone), and it builds them. Blue outlines show what it still has to build.</p>
+    </section>
+  </aside>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+</body>
+</html>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</body>
+</html>
+<script>
+"use strict";
+// ── where, and the server ──────────────────────────────────────────────
+const API = "api/";
+async function call(path, body) {
+  const r = await fetch(API + path, body ? { method: "POST", headers: { "Content-Type": "application/json", "X-Arc-Map": "1" }, body: JSON.stringify(body), credentials: "same-origin" }
+    : { credentials: "same-origin" });
+  let j = null; try { j = await r.json(); } catch (e) { j = null; }
+  if (r.status === 401) { location.href = "signin"; throw new Error("signed out"); }
+  if (!r.ok) throw new Error((j && j.error) || ("HTTP " + r.status));
+  return j;
+}
+const hashParts = decodeURIComponent(location.hash.slice(1)).split(":");
+let WORLD = hashParts[0] || "world";
+let CENTER = [+hashParts[1] || 0, +hashParts[2] || 64, +hashParts[3] || 0];
+let wantBuilder = hashParts[4] || null;
+
+// ── the model ──────────────────────────────────────────────────────────
+let OX = 0, OY = 0, OZ = 0, SX = 0, SY = 0, SZ = 0, CELLS = new Uint16Array(0), PAL = ["air"];
+let VILLAGERS = [], SUGG = [], ME = null, PLANS = [];
+const at = (x, y, z) => (x < OX || y < OY || z < OZ || x >= OX + SX || y >= OY + SY || z >= OZ + SZ) ? -1 : ((y - OY) * SZ + (z - OZ)) * SX + (x - OX);
+const key = (x, y, z) => x + "," + y + "," + z;
+const base = s => s.split("[")[0];
+const prop = (s, p) => { const m = s.match(new RegExp("[\\[,]" + p + "=([a-z_0-9]+)")); return m ? m[1] : null; };
+
+const NATURAL = new Set(["stone","copper_ore","iron_ore","diorite","andesite","dirt","coal_ore","grass_block","short_grass","gravel","lapis_ore","dandelion","oxeye_daisy","cornflower","poppy","granite","tall_grass","water","azure_bluet","sand","podzol","clay","seagrass","tall_seagrass","deepslate","tuff","gold_ore","redstone_ore","diamond_ore","emerald_ore","deepslate_coal_ore","deepslate_iron_ore","deepslate_copper_ore","deepslate_gold_ore","deepslate_redstone_ore","deepslate_lapis_ore","deepslate_diamond_ore","deepslate_emerald_ore","bedrock","calcite","dripstone_block","pointed_dripstone","moss_block","moss_carpet","glow_lichen","mud","snow","snow_block","ice","packed_ice","lava","fern","large_fern","kelp","kelp_plant","red_sand","sandstone","red_sandstone","rooted_dirt","coarse_dirt","mycelium","hanging_roots","big_dripleaf","small_dripleaf_block","cave_vines","cave_vines_plant","sweet_berry_bush","dead_bush","oak_leaves","birch_leaves","spruce_leaves","jungle_leaves","acacia_leaves","dark_oak_leaves","mangrove_leaves","cherry_leaves","azalea_leaves","flowering_azalea_leaves","bubble_column","smooth_basalt","amethyst_block","budding_amethyst","magma_block","obsidian","infested_stone","infested_deepslate"]);
+const COLORS = {
+  stone:"#7d7d7d", copper_ore:"#8a7a6c", iron_ore:"#8f857b", diorite:"#bcbcbc", andesite:"#888a89", dirt:"#7a5537", coal_ore:"#6a6a6a",
+  grass_block:"#5e9a3c", short_grass:"#6fae46", tall_grass:"#6fae46", cobblestone:"#6f6f6f", gravel:"#837d7a", torch:"#ffd36a", wall_torch:"#ffd36a",
+  lapis_ore:"#5a6d9c", dirt_path:"#957a46", dandelion:"#f5d63a", oxeye_daisy:"#e8e8e0", cornflower:"#4a6fd8", poppy:"#c9302c", granite:"#956755",
+  oak_log:"#6b5432", chest:"#a8742e", birch_fence_gate:"#cdbf87", birch_fence:"#cdbf87", birch_pressure_plate:"#d2c48c", deepslate_brick_stairs:"#4b4b4f",
+  polished_deepslate:"#4a4a4e", birch_wall_sign:"#d2c48c", oak_wall_sign:"#a88754", water:"#3b6fd6", birch_planks:"#d4c68b", spruce_trapdoor:"#6b4f2f",
+  yellow_bed:"#e7c23a", white_bed:"#e9ecec", composter:"#76512c", deepslate_bricks:"#46464a", farmland:"#5b3b22", azure_bluet:"#cfd8e8", potatoes:"#5d9a3a",
+  wheat:"#c7b04a", carrots:"#e08a2a", crafting_table:"#8c6236", lectern:"#a9824f", fletching_table:"#c9b47a", smithing_table:"#3b3b44", sand:"#dbcf9f",
+  blast_furnace:"#5a5a5c", furnace:"#6a6a6a", sugar_cane:"#86b65a", glass:"#cfe7ee", smooth_stone:"#a3a3a3", white_concrete:"#cfd5d6", podzol:"#5b3d1f",
+  smoker:"#5e5148", clay:"#a0a6b2", seagrass:"#2f7d32", tall_seagrass:"#2f7d32", command_block:"#c08a5a", spruce_slab:"#735535", brewing_stand:"#7a6a50",
+  grindstone:"#8c8c8c", stonecutter:"#8b8b8b", cartography_table:"#6e5338", loom:"#b49a6b", barrel:"#86603a", cauldron:"#3e3e44", bell:"#d9b23a",
+  lantern:"#e8b04c", ladder:"#a07c45", stone_bricks:"#7a7a7a", deepslate_tiles:"#38383c", oak_planks:"#a2834f", spruce_planks:"#735535", glowstone:"#e8c66a",
+  sea_lantern:"#b8d8d0", birch_slab:"#d4c68b", birch_stairs:"#d4c68b", polished_deepslate_slab:"#4a4a4e", deepslate_brick_slab:"#46464a",
+  spruce_fence:"#735535", spruce_fence_gate:"#735535", iron_bars:"#9aa0a0", oak_door:"#a2834f", spruce_door:"#6b4f2f", birch_door:"#d8cc98",
+  hay_block:"#c9a72e", glass_pane:"#cfe7ee", white_carpet:"#e9ecec", red_carpet:"#a12722", emerald_block:"#2fbf71", soul_sand:"#53402f",
+  magma_block:"#8e3a12", kelp:"#4c8a3a", deepslate:"#4d4d52", tuff:"#6c6d66", bedrock:"#3a3a3a", lava:"#e06a1a", oak_leaves:"#3f7a2a",
+  birch_leaves:"#5f8f3a", spruce_leaves:"#3a5a3a", spruce_log:"#4a3622", birch_log:"#dcd8c8", cobbled_deepslate:"#505055", bricks:"#975a46",
+  terracotta:"#985e43", quartz_block:"#e8e3da", snow_block:"#f2f6f6", obsidian:"#1e1630"
+};
+function colorOf(name) {
+  const b = base(name);
+  if (COLORS[b]) return COLORS[b];
+  if (b.endsWith("_wool") || b.endsWith("_concrete") || b.endsWith("_carpet")) {
+    const c = { white:"#e9ecec", orange:"#f07613", magenta:"#bd44b3", light_blue:"#3aafd9", yellow:"#f8c527", lime:"#70b919", pink:"#ed8dac", gray:"#3e4447", light_gray:"#8e8e86", cyan:"#158991", purple:"#792aac", blue:"#35399d", brown:"#724728", green:"#546d1b", red:"#a12722", black:"#141519" };
+    for (const k of Object.keys(c).sort((a, b) => b.length - a.length)) if (b.startsWith(k + "_")) return c[k];
+  }
+  if (b.includes("oak")) return "#a2834f";
+  if (b.includes("spruce")) return "#735535";
+  if (b.includes("birch")) return "#d4c68b";
+  if (b.includes("deepslate")) return "#4a4a4e";
+  if (b.includes("stone")) return "#7d7d7d";
+  let h = 0; for (const c of b) h = (h * 31 + c.charCodeAt(0)) | 0;
+  return "hsl(" + (Math.abs(h) % 360) + ",22%,52%)";
+}
+const TRANSLUCENT = new Set(["glass","water","glass_pane","ice","bubble_column"]);
+function shape(name) {
+  const b = base(name);
+  if (b.endsWith("_slab")) return prop(name, "type") === "top" ? [0,.5,0,1,1,1] : prop(name, "type") === "double" ? null : [0,0,0,1,.5,1];
+  if (b.endsWith("trapdoor")) {
+    if (prop(name, "open") === "true") {
+      const f = prop(name, "facing");
+      return f === "north" ? [0,0,.82,1,1,1] : f === "south" ? [0,0,0,1,1,.18] : f === "west" ? [.82,0,0,1,1,1] : [0,0,0,.18,1,1];
+    }
+    return prop(name, "half") === "top" ? [0,.82,0,1,1,1] : [0,0,0,1,.18,1];
+  }
+  if (b === "torch" || b === "soul_torch" || b === "redstone_torch") return [.42,0,.42,.58,.62,.58];
+  if (b.endsWith("wall_torch")) return [.4,.2,.4,.6,.8,.6];
+  if (b === "lantern" || b === "soul_lantern") return [.3,0,.3,.7,.5,.7];
+  if (b.endsWith("_fence") || b === "iron_bars") return [.35,0,.35,.65,1,.65];
+  if (b.endsWith("_pane")) return [.44,0,0,.56,1,1];
+  if (b.endsWith("fence_gate")) { const f = prop(name, "facing"); return f === "east" || f === "west" ? [.4,0,0,.6,.9,1] : [0,0,.4,1,.9,.6]; }
+  if (b.endsWith("_wall")) return [.25,0,.25,.75,1,.75];
+  if (b.endsWith("pressure_plate") || b.endsWith("_carpet")) return [.03,0,.03,.97,.07,.97];
+  if (b.endsWith("wall_sign") || b.endsWith("_sign")) return [.1,.25,.1,.9,.75,.9];
+  if (b.endsWith("_bed")) return [0,0,0,1,.56,1];
+  if (b === "farmland" || b === "dirt_path") return [0,0,0,1,.94,1];
+  if (b === "chest" || b === "trapped_chest" || b === "ender_chest") return [.06,0,.06,.94,.88,.94];
+  if (b === "lectern") return [.1,0,.1,.9,.9,.9];
+  if (b.endsWith("_door")) return [0,0,.82,1,1,1];
+  if (b === "ladder") { const f = prop(name, "facing"); return f === "south" ? [0,0,0,1,1,.15] : f === "east" ? [0,0,0,.15,1,1] : f === "west" ? [.85,0,0,1,1,1] : [0,0,.85,1,1,1]; }
+  if (["short_grass","tall_grass","fern","dandelion","poppy","oxeye_daisy","cornflower","azure_bluet","seagrass","tall_seagrass","wheat","potatoes","carrots","beetroots","sugar_cane","sweet_berry_bush","dead_bush","kelp","kelp_plant"].includes(b) || b.endsWith("_sapling") || b.endsWith("_tulip")) return [.25,0,.25,.75,.6,.75];
+  if (b.endsWith("_stairs")) return [0,0,0,1,.75,1];
+  return null;
+}
+const isFull = name => !shape(name) && !TRANSLUCENT.has(base(name));
+
+// ── your changes ───────────────────────────────────────────────────────
+let plan = new Map(), order = [];
+let note = "", saveTimer = null, preview = null, saving = false, builder = null;
+let todo = new Map();   // what the selected builder still has to build: key → block
+
+function cellName(x, y, z) {
+  if (plan.size || preview) {
+    const k = key(x, y, z);
+    if (plan.has(k)) return plan.get(k);
+    if (preview && preview.has(k)) return preview.get(k);
+  }
+  const i = at(x, y, z);
+  return i < 0 ? "air" : PAL[CELLS[i]];
+}
+
+// ── the scene ──────────────────────────────────────────────────────────
+const canvas = document.getElementById("gl");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 2000);
+const controls = new THREE.OrbitControls(camera, canvas);
+controls.enableDamping = true;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445055, 0.85));
+const sun = new THREE.DirectionalLight(0xffffff, 0.55); sun.position.set(0.6, 1, 0.35); scene.add(sun);
+const unit = new THREE.BoxGeometry(1, 1, 1);
+let solidMesh = null, glassMesh = null, lines = null;
+const solidMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+const glassMat = new THREE.MeshLambertMaterial({ color: 0xffffff, transparent: true, opacity: 0.38, depthWrite: false });
+let instCells = [], glassCells = [];
+const tmpM = new THREE.Matrix4(), tmpC = new THREE.Color();
+const cutEl = document.getElementById("cut"), groundEl = document.getElementById("ground"), todoEl = document.getElementById("showtodo");
+function shown(x, y, z, name) {
+  if (name === "air" || y > +cutEl.value) return false;
+  if (!groundEl.checked && NATURAL.has(base(name)) && !(plan.size && plan.has(key(x, y, z)))) return false;
+  return true;
+}
+function solidAt(x, y, z) { const n = cellName(x, y, z); return shown(x, y, z, n) && isFull(n); }
+function rebuild() {
+  for (const m of [solidMesh, glassMesh]) if (m) { scene.remove(m); if (m.dispose) m.dispose(); }
+  const solid = [], glass = [];
+  const visit = (x, y, z) => {
+    const n = cellName(x, y, z);
+    if (!shown(x, y, z, n)) return;
+    if (isFull(n) && solidAt(x+1,y,z) && solidAt(x-1,y,z) && solidAt(x,y+1,z) && solidAt(x,y-1,z) && solidAt(x,y,z+1) && solidAt(x,y,z-1)) return;
+    (TRANSLUCENT.has(base(n)) ? glass : solid).push([x, y, z, n]);
+  };
+  for (let y = OY; y < OY + SY; y++) for (let z = OZ; z < OZ + SZ; z++) for (let x = OX; x < OX + SX; x++) visit(x, y, z);
+  const outside = new Set();
+  for (const src of [plan, preview || new Map()]) for (const k of src.keys()) { const [x, y, z] = k.split(",").map(Number); if (at(x, y, z) < 0 && !outside.has(k)) { outside.add(k); visit(x, y, z); } }
+  const make = (list, mat) => {
+    const m = new THREE.InstancedMesh(unit, mat, Math.max(1, list.length));
+    list.forEach(([x, y, z, n], i) => {
+      const s = shape(n) || [0,0,0,1,1,1];
+      tmpM.makeScale(s[3]-s[0], s[4]-s[1], s[5]-s[2]);
+      tmpM.setPosition(x + (s[0]+s[3])/2, y + (s[1]+s[4])/2, z + (s[2]+s[5])/2);
+      m.setMatrixAt(i, tmpM);
+      tmpC.set(colorOf(n)); m.setColorAt(i, tmpC);
+    });
+    m.count = list.length;
+    m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true;
+    scene.add(m); return m;
+  };
+  instCells = solid; glassCells = glass;
+  solidMesh = make(solid, solidMat); glassMesh = make(glass, glassMat);
+  drawOutlines();
+}
+// Green: you place; red: you clear; amber: an upgrade you're looking at; blue: what the builder still has to do.
+function drawOutlines() {
+  if (lines) { scene.remove(lines); lines.geometry.dispose(); }
+  const pos = [], col = [];
+  const cube = (x, y, z, c, e) => {
+    const a = [x - e, y - e, z - e], b = [x + 1 + e, y + 1 + e, z + 1 + e];
+    const v = [[a[0],a[1],a[2]],[b[0],a[1],a[2]],[b[0],a[1],b[2]],[a[0],a[1],b[2]],[a[0],b[1],a[2]],[b[0],b[1],a[2]],[b[0],b[1],b[2]],[a[0],b[1],b[2]]];
+    for (const [i, j] of [[0,1],[1,2],[2,3],[3,0],[4,5],[5,6],[6,7],[7,4],[0,4],[1,5],[2,6],[3,7]]) { pos.push(...v[i], ...v[j]); col.push(...c, ...c); }
+  };
+  const G = [0.18, 0.85, 0.45], R = [0.95, 0.3, 0.25], A = [1.0, 0.7, 0.15], B = [0.35, 0.6, 1.0];
+  const cut = +cutEl.value;
+  if (todoEl.checked) for (const [k] of todo) { if (plan.has(k)) continue; const [x, y, z] = k.split(",").map(Number); if (y <= cut) cube(x, y, z, B, -0.06); }
+  for (const [k, v] of plan) { const [x, y, z] = k.split(",").map(Number); if (y <= cut) cube(x, y, z, v === "air" ? R : G, 0.02); }
+  if (preview) for (const [k] of preview) { if (plan.has(k)) continue; const [x, y, z] = k.split(",").map(Number); if (y <= cut) cube(x, y, z, A, 0.02); }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  lines = new THREE.LineSegments(g, new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false, transparent: true }));
+  lines.renderOrder = 5;
+  scene.add(lines);
+}
+const JOBC = { librarian:"#f2f0e6", fletcher:"#d9b25a", toolsmith:"#6f7a85", armorer:"#3a3a3a", none:"#c47a4a", nitwit:"#4f8a3a", cleric:"#b05ad9", farmer:"#c08f3a", weaponsmith:"#2e2e30", mason:"#a7a39a", cartographer:"#e0d8b0", shepherd:"#d8d8d8", butcher:"#c2453a", leatherworker:"#8a5a3a", fisherman:"#4a7ab0" };
+const vGroup = new THREE.Group(); scene.add(vGroup);
+let vMeshes = [];
+function drawVillagers() {
+  for (const m of vMeshes) vGroup.remove(m);
+  vMeshes = VILLAGERS.map((v, i) => {
+    const m = new THREE.Mesh(new THREE.BoxGeometry(0.6, 1.9, 0.6), new THREE.MeshLambertMaterial({ color: JOBC[v.job] || "#c47a4a" }));
+    m.position.set(v.pos[0], v.pos[1] + 0.95, v.pos[2]);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), new THREE.MeshLambertMaterial({ color: "#c9946a" }));
+    head.position.y = 1.15; m.add(head);
+    m.userData.v = i; vGroup.add(m); return m;
+  });
+}
+function resize() {
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  if (!w || !h) return;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(canvas);
+(function loop() { controls.update(); renderer.render(scene, camera); requestAnimationFrame(loop); })();
+
+// ── picking ────────────────────────────────────────────────────────────
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+let mode = "look", picked = "deepslate_bricks", selV = -1;
+function hit(ev) {
+  if (!solidMesh) return null;
+  const r = canvas.getBoundingClientRect();
+  ndc.set(((ev.clientX - r.left) / r.width) * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+  const hits = ray.intersectObjects([solidMesh, glassMesh].concat(document.getElementById("showv").checked ? vMeshes : []), false);
+  for (const h of hits) {
+    if (h.object.userData.v !== undefined) return { villager: h.object.userData.v };
+    const list = h.object === solidMesh ? instCells : glassCells;
+    const c = list[h.instanceId]; if (!c) continue;
+    const n = h.face.normal;
+    return { cell: [c[0], c[1], c[2]], name: c[3], normal: [Math.round(n.x), Math.round(n.y), Math.round(n.z)] };
+  }
+  return null;
+}
+const hoverEl = document.getElementById("hover");
+canvas.addEventListener("pointermove", ev => {
+  const h = hit(ev);
+  if (!h) { hoverEl.textContent = "Drag to turn, scroll to zoom, right-drag to pan"; return; }
+  if (h.villager !== undefined) { const v = VILLAGERS[h.villager]; hoverEl.textContent = title(v.job) + " " + LEVELS[v.level] + " at " + v.pos.map(Math.floor).join(" "); return; }
+  const k = key(...h.cell);
+  hoverEl.textContent = base(h.name).replace(/_/g, " ") + " at " + h.cell.join(" ") + (plan.has(k) ? (plan.get(k) === "air" ? " (you clear it)" : " (you placed it)") : todo.has(k) ? " (still to build: " + base(todo.get(k)).replace(/_/g, " ") + ")" : "");
+});
+let down = null;
+canvas.addEventListener("pointerdown", ev => { down = [ev.clientX, ev.clientY, ev.button]; });
+canvas.addEventListener("pointerup", ev => {
+  if (!down || Math.hypot(ev.clientX - down[0], ev.clientY - down[1]) > 5 || down[2] !== 0) { down = null; return; }
+  down = null;
+  const h = hit(ev); if (!h) return;
+  if (h.villager !== undefined) { selectVillager(h.villager, true); return; }
+  if (mode === "look") return;
+  const k = key(...h.cell);
+  if (mode === "break") {
+    if (plan.has(k)) setEdit(k, null);
+    else setEdit(k, "air");
+  } else {
+    if (plan.has(k) && plan.get(k) !== "air") { setEdit(k, null); return; }
+    const t = [h.cell[0] + h.normal[0], h.cell[1] + h.normal[1], h.cell[2] + h.normal[2]];
+    setEdit(key(...t), picked);
+  }
+});
+function setEdit(k, v) {
+  const i = at(...k.split(",").map(Number));
+  const was = i < 0 ? "air" : PAL[CELLS[i]];
+  if (v === null || v === was || (v !== "air" && base(v) === base(was))) { plan.delete(k); order = order.filter(o => o !== k); }
+  else { plan.set(k, v); order = order.filter(o => o !== k); order.push(k); }
+  changed();
+}
+function changed() { rebuild(); renderEdits(); renderUpgrades(); queueSave(); }
+
+// ── tools ──────────────────────────────────────────────────────────────
+const toolHint = document.getElementById("toolhint");
+function setMode(m) {
+  mode = m;
+  for (const id of ["look", "place", "break"]) document.getElementById("m-" + id).setAttribute("aria-pressed", String(id === m));
+  toolHint.textContent = m === "place" ? "Placing " + picked.replace(/_/g, " ") : m === "break" ? "Click a block to clear it" : "";
+  if (m !== "look") showTab("ed");
+}
+for (const id of ["look", "place", "break"]) document.getElementById("m-" + id).onclick = () => setMode(id);
+cutEl.oninput = () => { document.getElementById("cutv").textContent = "y " + cutEl.value; rebuild(); };
+groundEl.onchange = rebuild;
+todoEl.onchange = drawOutlines;
+document.getElementById("showv").onchange = e => { vGroup.visible = e.target.checked; };
+function showTab(t) {
+  for (const id of ["up", "vi", "ed"]) {
+    document.getElementById("t-" + id).setAttribute("aria-selected", String(id === t));
+    document.getElementById("p-" + id).hidden = id !== t;
+  }
+}
+for (const id of ["up", "vi", "ed"]) document.getElementById("t-" + id).onclick = () => showTab(id);
+
+// ── upgrades (left in the server's web/suggestions folder) ─────────────
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
+function applied(s) { return s.edits && Object.entries(s.edits).every(([k, v]) => plan.get(k) === v); }
+function renderUpgrades() {
+  const el = document.getElementById("p-up");
+  if (!SUGG.length) { el.innerHTML = '<p class="note">No upgrade ideas for this world yet. Ask Claude to look at a build: its suggestions show up here, each one something you can preview and add to your changes.</p>'; return; }
+  el.innerHTML = '<p class="note"><b>Show</b> outlines a change in amber; <b>Add to my changes</b> puts it with your changes, where you can still adjust it before sending.</p>';
+  for (const s of SUGG) {
+    const c = document.createElement("div");
+    const on = applied(s);
+    c.className = "card" + (on ? " on" : "");
+    let h = '<span class="kind ' + esc(s.kind || "") + '">' + (s.kind === "build" ? "A builder builds it" : s.kind === "task" ? "An employee does it" : "Checked") + '</span><h2>' + esc(s.title) + '</h2><p>' + esc(s.why || "") + '</p>';
+    if (s.commands) h += s.commands.map(cmd => '<div class="cmd"><span>' + esc(cmd) + '</span><button type="button" data-copy="' + esc(cmd.split("   ")[0]) + '">Copy</button></div>').join("");
+    if (s.edits) h += '<div class="row"><button class="btn" type="button" data-show="' + esc(s.id) + '">' + (preview && preview._id === s.id ? "Hide" : "Show") + '</button><button class="btn ' + (on ? "" : "primary") + '" type="button" data-add="' + esc(s.id) + '">' + (on ? "Take it out" : "Add to my changes") + '</button><span class="note">' + Object.keys(s.edits).length + ' blocks</span></div>';
+    c.innerHTML = h; el.appendChild(c);
+  }
+  el.querySelectorAll("[data-copy]").forEach(b => b.onclick = () => copy(b.dataset.copy, b));
+  el.querySelectorAll("[data-show]").forEach(b => b.onclick = () => {
+    const s = SUGG.find(x => x.id === b.dataset.show);
+    if (preview && preview._id === s.id) preview = null;
+    else { preview = new Map(Object.entries(s.edits)); preview._id = s.id; focusOn(Object.keys(s.edits)); }
+    rebuild(); renderUpgrades();
+  });
+  el.querySelectorAll("[data-add]").forEach(b => b.onclick = () => {
+    const s = SUGG.find(x => x.id === b.dataset.add);
+    if (applied(s)) for (const k of Object.keys(s.edits)) { plan.delete(k); order = order.filter(o => o !== k); }
+    else for (const [k, v] of Object.entries(s.edits)) { plan.set(k, v); order = order.filter(o => o !== k); order.push(k); }
+    if (preview && preview._id === s.id) preview = null;
+    changed(); showTab("ed");
+  });
+}
+function focusOn(keys) {
+  let x = 0, y = 0, z = 0;
+  for (const k of keys) { const p = k.split(",").map(Number); x += p[0]; y += p[1]; z += p[2]; }
+  const n = keys.length; if (!n) return;
+  const t = new THREE.Vector3(x / n + 0.5, y / n, z / n + 0.5), d = camera.position.clone().sub(controls.target);
+  controls.target.copy(t); camera.position.copy(t.clone().add(d));
+  if (y / n > +cutEl.value) { cutEl.value = Math.ceil(y / n) + 2; cutEl.oninput(); }
+}
+function copy(text, btn) {
+  const done = () => { const o = btn.textContent; btn.textContent = "Copied"; setTimeout(() => btn.textContent = o, 1200); };
+  try { navigator.clipboard.writeText(text).then(done, () => sel(btn)); } catch (e) { sel(btn); }
+}
+function sel(btn) { const r = document.createRange(); r.selectNodeContents(btn.previousElementSibling); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+
+// ── villagers ──────────────────────────────────────────────────────────
+const LEVELS = ["", "Novice", "Apprentice", "Journeyman", "Expert", "Master"];
+const title = s => s ? s.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()) : "No job";
+const ROMAN = ["", "I", "II", "III", "IV", "V"];
+function itemText(it) {
+  if (!it) return "";
+  if (it.ench) return Object.entries(it.ench).map(([k, v]) => title(k) + " " + (ROMAN[v] || v)).join(", ") + " book";
+  return (it.n > 1 ? it.n + " " : "") + it.id.replace(/_/g, " ");
+}
+const vq = document.getElementById("vq");
+function renderVillagers() {
+  const q = vq.value.trim().toLowerCase();
+  const list = document.getElementById("vlist"); list.innerHTML = "";
+  const idx = VILLAGERS.map((v, i) => i).sort((a, b) => VILLAGERS[b].pos[1] - VILLAGERS[a].pos[1] || VILLAGERS[a].job.localeCompare(VILLAGERS[b].job));
+  let n = 0;
+  for (const i of idx) {
+    const v = VILLAGERS[i];
+    const offers = v.offers.map(o => ({ it: itemText(o.sell), pr: [o.buy, o.buyB].filter(Boolean).map(itemText).join(" + "), book: !!(o.sell && o.sell.ench), out: o.max && o.uses >= o.max }));
+    if (q && !offers.some(o => o.it.toLowerCase().includes(q)) && !v.job.includes(q)) continue;
+    n++;
+    const d = document.createElement("div");
+    d.className = "vill" + (i === selV ? " sel" : ""); d.id = "v" + i; d.tabIndex = 0;
+    d.innerHTML = '<div class="hd"><span><span class="job">' + esc(title(v.job)) + '</span> <span class="tag">' + LEVELS[v.level] + '</span>' + (v.xp > 0 ? ' <span class="tag lock" title="Traded with: its trades can\'t be rerolled">locked</span>' : v.job !== "none" && v.job !== "nitwit" ? ' <span class="tag" title="Never traded: rerollable">rerollable</span>' : '') + '</span><span class="where">' + (v.stall ? esc(v.stall) : "") + '</span></div>'
+      + '<ul>' + offers.map(o => '<li class="' + (o.book ? "book" : "") + '"><span class="it">' + (o.out ? "<s>" : "") + esc(o.it) + (o.out ? "</s>" : "") + '</span><span class="pr">' + esc(o.pr) + '</span></li>').join("") + '</ul>'
+      + '<div class="where" style="margin-top:6px">' + v.pos.map(Math.floor).join(" ") + ' · /guide ' + v.pos.map(Math.floor).join(" ") + '</div>';
+    d.onclick = () => selectVillager(i, false);
+    d.onkeydown = e => { if (e.key === "Enter") selectVillager(i, false); };
+    list.appendChild(d);
+  }
+  if (!n) list.innerHTML = '<p class="note">' + (VILLAGERS.length ? 'No villager here sells "' + esc(q) + '".' : "No villagers in the area that's loaded.") + '</p>';
+  vMeshes.forEach((m, i) => {
+    const v = VILLAGERS[i];
+    const match = !q || v.job.includes(q) || v.offers.some(o => itemText(o.sell).toLowerCase().includes(q));
+    m.material.emissive.set(i === selV ? 0x2fbf71 : (q && match ? 0x1f7a48 : 0x000000));
+    m.material.opacity = match ? 1 : 0.25; m.material.transparent = !match;
+  });
+  const jobs = [...new Set(VILLAGERS.map(v => v.job))];
+  document.getElementById("legend").innerHTML = jobs.map(j => '<span><i style="background:' + (JOBC[j] || "#c47a4a") + '"></i>' + esc(title(j)) + ' ' + VILLAGERS.filter(v => v.job === j).length + '</span>').join("");
+}
+vq.oninput = renderVillagers;
+function selectVillager(i, fromScene) {
+  selV = i; renderVillagers(); showTab("vi");
+  const v = VILLAGERS[i];
+  if (!fromScene) { const t = new THREE.Vector3(v.pos[0], v.pos[1] + 1, v.pos[2]), d = camera.position.clone().sub(controls.target).setLength(18); controls.target.copy(t); camera.position.copy(t.clone().add(d)); }
+  if (v.pos[1] + 2 < +cutEl.value - 3) { cutEl.value = Math.floor(v.pos[1]) + 3; cutEl.oninput(); }
+  const el = document.getElementById("v" + i); if (el) el.scrollIntoView({ block: "nearest" });
+}
+
+// ── block picker and your changes ──────────────────────────────────────
+const COMMON = ["deepslate_bricks","polished_deepslate","deepslate_tiles","cobbled_deepslate","birch_planks","birch_slab","birch_stairs","birch_fence","birch_fence_gate","oak_planks","spruce_planks","spruce_trapdoor","spruce_door","glass","glass_pane","torch","lantern","sea_lantern","glowstone","ladder","stone_bricks","smooth_stone","cobblestone","lectern","fletching_table","smithing_table","blast_furnace","brewing_stand","composter","grindstone","stonecutter","cartography_table","loom","barrel","cauldron","smoker","bell","chest","white_bed","hay_block","iron_bars","white_carpet","red_carpet","soul_sand","magma_block"];
+let BLOCKS = COMMON.slice();
+const bq = document.getElementById("bq");
+function renderBlocks() {
+  const q = bq.value.trim().toLowerCase().replace(/ /g, "_");
+  const el = document.getElementById("blocks"); el.innerHTML = "";
+  const list = (q ? BLOCKS.filter(b => b.includes(q)).sort((a, b) => (a.startsWith(q) ? 0 : 1) - (b.startsWith(q) ? 0 : 1)) : COMMON).slice(0, 120);
+  for (const b of list) {
+    const btn = document.createElement("button");
+    btn.type = "button"; btn.className = "blk"; btn.setAttribute("aria-pressed", String(b === picked));
+    btn.innerHTML = '<span class="sw" style="background:' + colorOf(b) + '"></span><span>' + esc(b.replace(/_/g, " ")) + '</span>';
+    btn.onclick = () => { picked = b; renderBlocks(); setMode("place"); };
+    el.appendChild(btn);
+  }
+  if (!list.length) el.innerHTML = '<p class="note">No block called "' + esc(q) + '".</p>';
+}
+bq.oninput = renderBlocks;
+const statusEl = document.getElementById("status");
+function renderEdits() {
+  const n = plan.size;
+  document.getElementById("ecount").textContent = n ? n + " change" + (n === 1 ? "" : "s") : "No changes yet";
+  document.getElementById("elist").innerHTML = [...order].reverse().slice(0, 200).map(k => { const v = plan.get(k); return '<div class="' + (v === "air" ? "del" : "add") + '"><span>' + (v === "air" ? "clear" : esc(base(v).replace(/_/g, " "))) + '</span><span>' + k.replace(/,/g, " ") + '</span></div>'; }).join("") + (order.length > 200 ? '<div class="note">and ' + (order.length - 200) + ' more</div>' : "");
+  document.getElementById("undo").disabled = !order.length;
+  document.getElementById("clear").disabled = !n;
+  const send = document.getElementById("send");
+  send.disabled = !n || !builder;
+  send.textContent = builder ? "Send to " + builder.name : "Pick a builder first";
+  statusEl.className = "pill" + (n ? " draft" : "");
+  statusEl.textContent = n ? n + " unsent change" + (n === 1 ? "" : "s") + (saving ? " · saving" : " · saved") : builder ? builder.name + ": " + builder.status : "No builders";
+}
+document.getElementById("undo").onclick = () => { const k = order.pop(); if (k) { plan.delete(k); changed(); } };
+let clearArmed = false;
+document.getElementById("clear").onclick = e => {
+  if (!clearArmed) { clearArmed = true; e.target.textContent = "Sure? Click again"; setTimeout(() => { clearArmed = false; e.target.textContent = "Clear all"; }, 2500); return; }
+  clearArmed = false; e.target.textContent = "Clear all"; plan.clear(); order = []; changed();
+};
+const enote = document.getElementById("enote");
+enote.oninput = () => { note = enote.value; queueSave(); };
+
+// ── drafts and sending ─────────────────────────────────────────────────
+function queueSave() { if (!builder) return; clearTimeout(saveTimer); saveTimer = setTimeout(save, 700); }
+async function save() {
+  clearTimeout(saveTimer); saveTimer = null;
+  if (!builder) return;
+  saving = true; renderEdits();
+  try { await call("draft", { builder: builder.id, world: WORLD, edits: order.map(k => ({ p: k, b: plan.get(k) })), note }); }
+  catch (e) { statusEl.textContent = "Couldn't save: " + e.message; }
+  saving = false; renderEdits();
+}
+document.getElementById("send").onclick = async () => {
+  if (!builder || !plan.size) return;
+  const btn = document.getElementById("send"); btn.disabled = true; btn.textContent = "Sending…";
+  try {
+    await save();
+    const r = await call("send", { builder: builder.id, start: document.getElementById("startnow").checked });
+    document.getElementById("sendnote").textContent = r.message;
+    if (r.ok) { plan.clear(); order = []; await refreshPlans(); changed(); }
+  } catch (e) { document.getElementById("sendnote").textContent = "Couldn't send: " + e.message; }
+  renderEdits();
+};
+async function loadDraft() {
+  plan = new Map(); order = []; note = "";
+  if (builder) {
+    try {
+      const d = await call("draft?builder=" + encodeURIComponent(builder.id));
+      if (d && Array.isArray(d.edits) && (!d.world || d.world === WORLD)) { plan = new Map(d.edits.map(e => [e.p, e.b])); order = d.edits.map(e => e.p); note = d.note || ""; }
+    } catch (e) { /* none yet */ }
+  }
+  enote.value = note;
+  rebuild(); renderEdits(); renderUpgrades();
+}
+async function refreshPlans() {
+  try { PLANS = await call("plans?world=" + encodeURIComponent(WORLD)); } catch (e) { PLANS = []; }
+  const p = builder && PLANS.find(x => x.builder === builder.id);
+  todo = new Map(p ? p.todo.map(c => [key(c[0], c[1], c[2]), c[3]]) : []);
+  document.getElementById("todolabel").textContent = p ? p.left + " blocks still to build in " + p.blueprint : "";
+}
+const builderEl = document.getElementById("builder");
+builderEl.onchange = async () => {
+  builder = ME.builders.find(b => b.id === builderEl.value) || null;
+  await refreshPlans(); await loadDraft();
+};
+
+// ── loading the world round a spot ─────────────────────────────────────
+async function loadArea(x, y, z) {
+  CENTER = [Math.floor(x), Math.floor(y), Math.floor(z)];
+  history.replaceState(null, "", "#" + [WORLD, ...CENTER].concat(builder ? [builder.id] : []).join(":"));
+  const r = +document.getElementById("radius").value;
+  document.getElementById("snap").textContent = "Loading " + WORLD + " round " + CENTER.join(" ") + "…";
+  const [reg, vs] = await Promise.all([
+    call("region?world=" + encodeURIComponent(WORLD) + "&x=" + CENTER[0] + "&y=" + CENTER[1] + "&z=" + CENTER[2] + "&r=" + r + "&dy=" + Math.min(40, Math.max(16, r))),
+    call("villagers?world=" + encodeURIComponent(WORLD) + "&x=" + CENTER[0] + "&y=" + CENTER[1] + "&z=" + CENTER[2] + "&r=" + (r + 8)).catch(() => [])
+  ]);
+  [OX, OY, OZ] = reg.origin; [SX, SY, SZ] = reg.size; PAL = reg.palette;
+  const raw = atob(reg.cells); CELLS = new Uint16Array(SX * SY * SZ);
+  for (let i = 0; i < CELLS.length; i++) CELLS[i] = raw.charCodeAt(2 * i) | (raw.charCodeAt(2 * i + 1) << 8);
+  VILLAGERS = vs; selV = -1;
+  cutEl.min = OY; cutEl.max = OY + SY - 1;
+  if (+cutEl.value > OY + SY - 1 || +cutEl.value < OY || !cutEl.dataset.touched) cutEl.value = OY + SY - 1;
+  document.getElementById("cutv").textContent = "y " + cutEl.value;
+  document.getElementById("snap").textContent = WORLD + " round " + CENTER.join(" ") + " · live, loaded " + new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  drawVillagers(); renderVillagers(); rebuild();
+}
+cutEl.addEventListener("input", () => { cutEl.dataset.touched = "1"; });
+document.getElementById("reload").onclick = () => {
+  const t = controls.target;
+  const near = Math.hypot(t.x - CENTER[0], t.z - CENTER[2]) < 4;
+  loadArea(near ? CENTER[0] : t.x, near ? CENTER[1] : t.y, near ? CENTER[2] : t.z).then(refreshPlans).then(drawOutlines).catch(e => { document.getElementById("snap").textContent = "Couldn't load: " + e.message; });
+};
+document.getElementById("radius").onchange = () => document.getElementById("reload").onclick();
+
+(async () => {
+  try {
+    ME = await call("me");
+    if (!location.hash && ME.at) { WORLD = ME.at[0]; CENTER = ME.at.slice(1); }
+    document.getElementById("bluemap").href = "../#" + WORLD + ":" + CENTER.join(":") + ":120:0:0.9:0:0:perspective";
+    const mine = ME.builders.filter(b => !b.world || b.world === WORLD || !wantBuilder);
+    builderEl.innerHTML = ME.builders.map(b => '<option value="' + esc(b.id) + '">' + esc(b.name) + (b.blueprint ? " · " + esc(b.blueprint) : "") + '</option>').join("") || '<option value="">No builders</option>';
+    builder = ME.builders.find(b => b.id === wantBuilder) || ME.builders.find(b => b.world === WORLD) || ME.builders[0] || null;
+    if (builder) builderEl.value = builder.id;
+    controls.target.set(CENTER[0] + 0.5, CENTER[1], CENTER[2] + 0.5);
+    camera.position.set(CENTER[0] + 30, CENTER[1] + 30, CENTER[2] + 36);
+    try { BLOCKS = [...new Set(COMMON.concat(await call("blocks")))]; } catch (e) { /* the common ones */ }
+    try { SUGG = await call("suggestions?world=" + encodeURIComponent(WORLD)); } catch (e) { SUGG = []; }
+    await loadArea(...CENTER);
+    await refreshPlans();
+    await loadDraft();
+    renderBlocks();
+    if (SUGG.length) showTab("up");
+  } catch (e) {
+    document.getElementById("snap").textContent = "Couldn't load: " + e.message;
+  }
+})();
+</script>
+</body>
+</html>

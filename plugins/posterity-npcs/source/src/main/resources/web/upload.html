@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Upload blueprints</title>
+<style>
+  :root { --bg:#15191c; --card:#1d2226; --line:#2c3338; --text:#e7ebe8; --dim:#9aa5a0; --ok:#2fbf71; --bad:#e5534b; --accent:#3ea6ff; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:16px; font:16px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif; background:var(--bg); color:var(--text);
+         min-height:100vh; display:flex; justify-content:center; }
+  main { width:100%; max-width:640px; }
+  h1 { font-size:24px; margin:24px 0 4px; }
+  .sub { color:var(--dim); margin:0 0 20px; }
+  #drop { display:block; border:2px dashed var(--line); border-radius:12px; background:var(--card); padding:40px 16px; text-align:center; cursor:pointer;
+          transition:border-color .15s, background .15s; }
+  #drop.over { border-color:var(--accent); background:#1f2a33; }
+  #drop b { color:var(--accent); }
+  #drop small { display:block; color:var(--dim); margin-top:8px; }
+  input[type=file] { display:none; }
+  ul { list-style:none; padding:0; margin:20px 0; }
+  li { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:8px; overflow-wrap:anywhere; }
+  li .name { font-weight:600; }
+  li .msg { color:var(--dim); font-size:14px; white-space:pre-line; }
+  li.ok { border-color:var(--ok); } li.ok .msg { color:var(--ok); }
+  li.bad { border-color:var(--bad); } li.bad .msg { color:var(--bad); }
+  .note { color:var(--dim); font-size:14px; }
+  #gone { display:none; color:var(--bad); }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title">Upload blueprints</h1>
+  <p class="sub" id="sub">Loading…</p>
+  <label id="drop" for="pick">
+    <b>Drop files here</b> or click to choose them
+    <small id="kinds">.schem, .schematic, .litematic, .nbt or a .zip of them</small>
+  </label>
+  <input type="file" id="pick" multiple accept=".schem,.schematic,.litematic,.nbt,.zip">
+  <p id="gone">This link has run out. Get a new one in the game.</p>
+  <ul id="list"></ul>
+  <p class="note" id="foot"></p>
+</main>
+<script>
+(() => {
+  const base = location.pathname.replace(/\/+$/, '');
+  const $ = id => document.getElementById(id);
+  const rows = {};          // the server's name for a file (or a local key until it's known) -> list item
+  let info = null, expired = false, seq = 0;
+
+  const TEXT = {
+    shared:   ['Upload blueprints', 'Blueprints go to the server\'s blueprint folder, for builders to build.'],
+    catalog:  ['Add houses to the NPC Homes catalog', 'Every player will be able to pick these for their employees. Each house needs a bed and a door.'],
+    personal: ['Upload your own NPC house', 'Only you see it: pick it in an employee\'s Home menu, under My houses. It needs a bed and a door.'],
+  };
+
+  function row(key, label) {
+    if (!rows[key]) {
+      const li = document.createElement('li');
+      li.innerHTML = '<div class="name"></div><div class="msg"></div>';
+      li.querySelector('.name').textContent = label || key;
+      $('list').appendChild(li);
+      rows[key] = li;
+    }
+    return rows[key];
+  }
+  function set(key, state, msg, label) {
+    const li = row(key, label);
+    li.className = state || '';
+    li.querySelector('.msg').textContent = msg;
+  }
+  // The server told us the name it filed an upload under: results come back under that name.
+  function rekey(from, to) {
+    if (from === to) return to;
+    if (rows[to] && rows[to] !== rows[from]) rows[to].remove();
+    rows[to] = rows[from];
+    delete rows[from];
+    return to;
+  }
+
+  async function status() {
+    try {
+      const r = await fetch(base + '/status', { cache: 'no-store' });
+      const j = await r.json();
+      if (!r.ok) { gone(); return; }
+      info = j;
+      const t = TEXT[j.kind] || TEXT.shared;
+      $('title').textContent = t[0];
+      document.title = t[0];
+      $('sub').textContent = 'For ' + j.player + '. ' + t[1];
+      const mins = Math.max(0, Math.round((j.expires - j.now) / 60000));
+      $('foot').textContent = 'Up to ' + Math.round(j.maxBytes / 1048576) + ' MB a file, ' + j.maxFiles
+        + ' files. This link works for about ' + mins + ' more minute' + (mins === 1 ? '' : 's') + '. You also get a message in the game.';
+      // A zip can hold several houses: one line each, under the zip's name.
+      const byFile = {};
+      for (const res of j.results) (byFile[res.file] = byFile[res.file] || []).push(res);
+      for (const file in byFile) {
+        const list = byFile[file];
+        set(file, list.every(r => r.ok) ? 'ok' : 'bad', list.map(r => r.message).join('\n'));
+      }
+    } catch (e) { /* try again next time */ }
+  }
+  function gone() {
+    expired = true;
+    $('gone').style.display = 'block';
+    $('drop').style.display = 'none';
+  }
+
+  async function send(file) {
+    if (expired) return;
+    let key = 'local-' + (++seq);
+    if (info && file.size > info.maxBytes) { set(key, 'bad', 'Too big: up to ' + Math.round(info.maxBytes / 1048576) + ' MB.', file.name); return; }
+    set(key, '', 'Uploading…', file.name);
+    try {
+      const r = await fetch(base + '/file?name=' + encodeURIComponent(file.name), {
+        method: 'POST', headers: { 'X-Arc-Map': '1', 'Content-Type': 'application/octet-stream' }, body: file });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 410) { set(key, 'bad', 'This link has run out.'); gone(); return; }
+      if (!r.ok) { set(key, 'bad', j.error || 'Upload failed.'); return; }
+      if (j.name) key = rekey(key, j.name);
+      if (!rows[key].className) set(key, '', 'Uploaded. Checking it on the server…');
+    } catch (e) {
+      set(key, 'bad', 'Upload failed: ' + e.message);
+    }
+  }
+
+  function take(files) { for (const f of files) send(f); }
+  const drop = $('drop');
+  ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => take(e.dataTransfer.files));
+  $('pick').addEventListener('change', e => { take(e.target.files); e.target.value = ''; });
+
+  status();
+  setInterval(() => { if (!expired) status(); }, 2000);
+})();
+</script>
+</body>
+</html>

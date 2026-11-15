@@ -1,0 +1,435 @@
+# ArcEmployees settings. Apply changes with /employees reload.
+
+currency-symbol: "$"
+
+# How many employees one player may have (admins are not limited).
+max-employees-per-player: 6
+
+# Personalities. Every employee gets one random trait when hired (the owner
+# doesn't choose it), e.g. "Absolutely loves sheep" or "Loves to swim". Now and
+# then the trait takes over: they drop their work for a minute or two (follow
+# the sheep, go for a swim, take a nap...) and then go back to it.
+personalities:
+  enabled: true
+  # How long they stay focused between two distractions (varies +-30%).
+  calm-minutes: 8
+
+# Homes. Every employee needs one: without a home they're unhappy and work
+# slower. /employees house <name> (or Home in their menu) picks a house from
+# the NPC Homes catalog and places it where you stand; once it's built they
+# move in. Or look at a bed you built (with a door within 8 blocks) and run
+# /employees house <name>. Breaking the bed makes them homeless again.
+# Admins fill the catalog with /employees homes add <blueprint> <id> [name];
+# the files go to plugins/ArcEmployees/blueprints/homes/.
+homes:
+  enabled: true
+  # Work speed while homeless (0.75 = 75% of normal).
+  homeless-work-speed: 0.75
+  # How much of a home site must be built (bed and door included) to move in.
+  finished-percent: 90
+  # An employee building its own home (/employees house <name> self on) takes a
+  # one-minute break to work on it this often, and also works on it whenever
+  # its job has nothing to do.
+  self-build-break-minutes: 5
+
+# Hiring villagers. Shift-right-click a grown-up villager (or look at one and
+# type /employees hire <job>) and pick a job: the villager becomes an employee
+# (a player-shaped NPC with a skin) standing where it stood. Free for now.
+villager-hiring:
+  # Employees come only from villagers. /employees hire with no villager in
+  # front of you (an employee out of nothing, where you stand) is admins only.
+  villagers-only: true
+  # Only villagers that came to the world the normal way can be hired: from a
+  # generated village, born, or cured. Not ones from spawn eggs or commands.
+  natural-only: true
+  # Firing an employee that was a villager turns it back into a villager where
+  # it stands (it can be hired again, but its village isn't refilled twice).
+  release-on-fire: true
+  # With Kingdoms & Claims installed: founding your first kingdom brings this
+  # many settler villagers to its Core. Only the founder can hire them, for
+  # free, picking each one's job. 0 turns it off.
+  kingdom-settlers: 2
+  replenish:
+    # A hired villager's village gets a baby villager in its place, after a
+    # delay, so villages don't empty out. Only up to the number of villagers
+    # that were there before the hire (never more), and never past the cap.
+    enabled: true
+    delay-minutes: 20
+    # Blocks round the hiring spot that count as the village.
+    radius: 48
+    max-villagers-nearby: 30
+
+# Keep every work site's chunks loaded (plugin chunk tickets), so employees
+# keep working, and saplings and crops keep growing, while nobody is nearby.
+# On this Paper build, ticket-loaded chunks get normal random ticks.
+keep-work-sites-loaded: true
+
+# Largest work area side, in blocks, and the radius used when hiring
+# (lumberjacks and farmers; the other jobs have their own settings below).
+max-area-size: 48
+default-area-radius: 8
+
+# Blocks per tick an employee walks (a player walks about 0.216).
+walk-speed: 0.2
+
+payroll:
+  # Wages are taken from the owner's balance once per interval, in advance.
+  # If the owner can't pay, the employee goes on strike until paid.
+  interval-hours: 24
+  # Tell offline owners about strikes with Essentials mail.
+  mail-when-offline: true
+  # Employees rest while nobody is on the server, unless you told one to keep
+  # working while everyone's away (its menu, or /employees away <name> work).
+  rest-when-server-empty: true
+  # No wages for a pay period (a day) in which no player was online at all:
+  # the next one is simply free. Employees working while away are always paid.
+  only-days-with-players: true
+
+# work-speed: 1.0 = exactly as fast as a survival player holding the same tool
+# (vanilla mining times, the pause between blocks, one right-click per 4 ticks).
+# 2.0 = twice as fast, 0.5 = half. The tool also sets the speed: a diamond axe
+# chops faster than an iron one.
+jobs:
+  lumberjack:
+    hire-cost: 50
+    wage: 10
+    tool: IRON_AXE
+    work-speed: 1.0
+    # Saplings of each kind kept in the backpack for planting instead of delivered.
+    reserve: 64
+    # Plant new trees on open ground in the area (not only where trees stood),
+    # in rows: trunks `spacing` blocks apart along a row, rows `row-spacing`
+    # apart (the gap is a walkway). Single-trunk saplings are preferred; dark
+    # and pale oak (2x2) only when that's all it has. Saplings come from its
+    # backpack, then its own and your other employees' chests.
+    auto-plant: true
+    spacing: 3
+    row-spacing: 5
+  farmer:
+    hire-cost: 50
+    wage: 10
+    tool: IRON_HOE
+    work-speed: 1.0
+    # Seeds of each kind kept for replanting instead of delivered.
+    reserve: 32
+  # Explores caves and hillsides for the blocks in its filter (/employees filter),
+  # tunnelling through natural stone and dirt (never builds) inside its area.
+  # Hiring sets an area of area-radius around you, from area-below blocks under
+  # you to area-above over you; /employees area <name> worldedit sets any box.
+  miner:
+    hire-cost: 100
+    wage: 15
+    tool: IRON_PICKAXE
+    work-speed: 1.0
+    area-radius: 24
+    area-below: 160
+    area-above: 10
+    max-area-size: 128
+    max-area-height: 400
+    # What new miners look for: block names, #tags, or "ores" (every ore).
+    targets: [ores]
+    # true = also find ores buried in solid rock. false = only what a player
+    # exploring caves could see.
+    x-ray: false
+    # Keep the stone and dirt dug while tunnelling (false = throw it away).
+    keep-tunnel-blocks: false
+    # Miners set to roam (/employees roam <name> on) move their area on to the
+    # next patch of ground when it's mined out, spiralling out from where they
+    # started, up to this many blocks away. Only already-generated land.
+    roam-distance: 256
+  # Digs out its whole area, layer by layer from the top, leaving a spiral
+  # staircase along the wall. A quarry's filter lists items it throws away.
+  quarry:
+    hire-cost: 100
+    wage: 15
+    tool: IRON_PICKAXE
+    work-speed: 1.0
+    # Hiring: a 9x9 hole from the block you stand on down area-below blocks.
+    area-radius: 4
+    area-below: 32
+    area-above: -1
+    max-area-size: 48
+    max-area-height: 400
+    # Blocks used to plug water and lava and patch the staircase (kept, up to reserve each).
+    filler: [COBBLESTONE, COBBLED_DEEPSLATE, DIRT, NETHERRACK, STONE, DEEPSLATE, ANDESITE, DIORITE, GRANITE, TUFF, BLACKSTONE]
+    reserve: 64
+  # Builds blueprints (/employees blueprints) block by block, taking materials
+  # from its backpack and its supply (/employees supply).
+  builder:
+    hire-cost: 100
+    wage: 20
+    # Its tool tier: it carries a pickaxe, axe, shovel and hoe of this tier
+    # and uses whichever clears a block fastest.
+    tool: IRON_PICKAXE
+    work-speed: 1.0
+    # Largest blueprint, in blocks (width x height x length, air included).
+    max-volume: 2000000
+    # Ghost blocks shown by /employees build ... preview. They stay while you're
+    # near the build and go preview-seconds after you leave.
+    preview-blocks: 30000
+    preview-seconds: 60
+    # Repair mode (/employees repair <name> on, or snapshot for an existing
+    # build): how often a finished build is looked over for missing blocks.
+    repair-check-seconds: 60
+  # Keeps furnaces, smokers and blast furnaces in its area loaded, fuelled and
+  # emptied. Smelting happens in the real furnaces at vanilla speed.
+  smelter:
+    hire-cost: 60
+    wage: 10
+    tool: COAL
+    work-speed: 1.0
+    area-radius: 4
+    # What new smelters smelt (change per smelter with /employees filter).
+    smelts: [RAW_IRON, RAW_GOLD, RAW_COPPER, IRON_ORE, DEEPSLATE_IRON_ORE, GOLD_ORE, DEEPSLATE_GOLD_ORE,
+             COPPER_ORE, DEEPSLATE_COPPER_ORE, NETHER_GOLD_ORE, ANCIENT_DEBRIS, BEEF, PORKCHOP, CHICKEN, MUTTON,
+             RABBIT, COD, SALMON, KELP]
+    # Fuel it may burn, best first.
+    fuels: [COAL, CHARCOAL, COAL_BLOCK, BLAZE_ROD, DRIED_KELP_BLOCK]
+    # Inputs and fuel kept in the backpack instead of delivered.
+    reserve: 640
+  # Looks after the animals in its area: breeds them up to herd-size of each
+  # kind, culls the oldest above it, shears sheep, milks into empty buckets
+  # and collects eggs. Never touches named, tamed, leashed or baby animals.
+  rancher:
+    hire-cost: 60
+    wage: 10
+    tool: IRON_SWORD
+    work-speed: 1.0
+    herd-size: 10
+    # The herd size counts young ones too. true: keep breeding a few over it
+    # (a tenth of the herd) and cull the oldest grown-ups above it, so a full
+    # herd keeps producing meat and leather. false: breed only up to the herd
+    # size, then just look after it.
+    keep-breeding: true
+    animals: [COW, MOOSHROOM, PIG, SHEEP, CHICKEN, RABBIT, GOAT]
+    # Feed and buckets kept in the backpack.
+    reserve: 64
+
+  # Patrols its area and fights hostile mobs within 8 blocks of it, at
+  # player sword speed. Torches in its backpack light up dark ground.
+  guard:
+    hire-cost: 80
+    wage: 12
+    tool: IRON_SWORD
+    work-speed: 1.0
+    area-radius: 16
+    area-below: 8
+    area-above: 8
+    max-area-size: 96
+    max-area-height: 64
+    # Mobs it leaves alone (neutral ones that would start fights it can't finish).
+    ignore: [ENDERMAN, ZOMBIFIED_PIGLIN, PIGLIN, PIGLIN_BRUTE, WARDEN, ENDER_DRAGON, WITHER]
+    # Torches kept for lighting.
+    reserve: 64
+
+  # Follows you around and fights mobs near you (or guards its post, its
+  # work area, when told to stay: /employees stay <name>). With torches in its
+  # backpack it lights dark spots around you. Picks up what the mobs drop.
+  bodyguard:
+    hire-cost: 120
+    wage: 15
+    tool: IRON_SWORD
+    work-speed: 1.0
+    # How far from you it goes after mobs.
+    protect-radius: 12
+    area-radius: 6
+    reserve: 64
+
+  # Works a trading hall: makes the trades you pick (/employees trades <name>)
+  # whenever the villager has stock, paying from its backpack and your
+  # storage. One trade per right-click (4 ticks). Villagers in its area.
+  trader:
+    hire-cost: 80
+    wage: 12
+    tool: EMERALD
+    work-speed: 1.0
+    area-radius: 8
+    # Trade goods (e.g. sticks) kept in the backpack instead of delivered.
+    reserve: 256
+    # Short of what a trade costs? With crafting on (each trader has a toggle in
+    # its Trades menu, on to begin with) it crafts it from what's in your
+    # storage: oak logs into planks into sticks, and so on, up to 3 steps.
+    # New traders start with this list of things they never craft with; each
+    # trader's own list can be changed in its menu or /employees craft.
+    never-craft-with: [DIAMOND, DIAMOND_BLOCK, NETHERITE_INGOT, NETHERITE_SCRAP, NETHERITE_BLOCK, NETHER_STAR,
+                       GOLD_BLOCK, EMERALD_BLOCK, ENCHANTED_GOLDEN_APPLE, ECHO_SHARD, HEAVY_CORE]
+
+  # Carries items between chests along its routes (/employees route).
+  # Placed chests within walk-distance blocks are walked to; farther ones (or
+  # other worlds) it takes a shortcut to. /chest numbers work from anywhere.
+  courier:
+    hire-cost: 60
+    wage: 8
+    tool: BUNDLE
+    work-speed: 1.0
+    area-radius: 3
+    walk-distance: 64
+
+# Selling: merchants (NPCs placed with /employees market place) buy items
+# from players, and from employees set to sell (/employees sell).
+market:
+  enabled: true
+  # Merchants pay this fraction of ArcShop's buy price (plugins/ArcShop/catalog.yml),
+  # so buying to resell never pays. Changing a price in ArcShop changes this too.
+  sell-ratio: 0.25
+  # Flooding the market: an item's price halves for every `demand` of it a
+  # player sells, and recovers over about demand-recovery-hours.
+  demand: 256
+  demand-recovery-hours: 24
+  # What one player (with their employees) can earn at full price in any 24
+  # hours. 0 = no limit. (A workout pays $60.)
+  max-income-per-day: 300
+  # Past that, merchants still buy from players, at this share of the price
+  # (0.25 = a quarter; 0 = they stop buying). Employees stop at the limit and
+  # keep their goods in storage, so nothing gets dumped cheaply by accident.
+  over-limit-rate: 0.25
+  # Add a day of your employees' wages to your limit, so paying your staff
+  # never eats into what you can make for yourself.
+  wages-raise-limit: true
+  # false: players have to walk up to a merchant to sell.
+  sell-anywhere: false
+  # Trade only at merchants: they sell ArcShop's catalog (at its prices,
+  # discovered items only, like /shop) and buy at sell-ratio of that. With
+  # this on, the commands below are blocked and point players to a merchant.
+  # Set false to allow /shop and /sell again.
+  merchants-only: true
+  blocked-commands: [shop, arcshop:shop, sell, esell, essentials:sell, essentials:esell, sellall]
+  # Real-world markets move merchant prices: each item follows a commodity
+  # (gold futures, lumber, live cattle, bitcoin...) from Yahoo Finance. Only
+  # the movement counts: price x (today / its 3-month average) ^ amplify,
+  # kept between min- and max-multiplier. Refreshed every refresh-minutes.
+  real-world:
+    enabled: false
+    refresh-minutes: 60
+    # 3 turns a real 5% move into about 16%.
+    amplify: 3
+    min-multiplier: 0.5
+    max-multiplier: 2.0
+    tickers:
+      gold: {symbol: "GC=F", name: "Gold", items: [GOLD_INGOT, RAW_GOLD, GOLD_NUGGET, GOLD_BLOCK]}
+      steel: {symbol: "HRC=F", name: "US steel", items: [IRON_INGOT, RAW_IRON, IRON_NUGGET, IRON_BLOCK]}
+      copper: {symbol: "HG=F", name: "Copper", items: [COPPER_INGOT, RAW_COPPER, COPPER_BLOCK]}
+      platinum: {symbol: "PL=F", name: "Platinum", items: [DIAMOND, DIAMOND_BLOCK]}
+      silver: {symbol: "SI=F", name: "Silver", items: [QUARTZ, AMETHYST_SHARD]}
+      bitcoin: {symbol: "BTC-USD", name: "Bitcoin", items: [EMERALD, EMERALD_BLOCK]}
+      oil: {symbol: "CL=F", name: "Crude oil", items: [COAL, CHARCOAL, COAL_BLOCK]}
+      lumber: {symbol: "LBR=F", name: "Lumber", items: ["#logs", "#planks"]}
+      wheat: {symbol: "ZW=F", name: "Wheat", items: [WHEAT, BREAD, HAY_BLOCK]}
+      corn: {symbol: "ZC=F", name: "Corn", items: [CARROT, POTATO, BEETROOT, BAKED_POTATO]}
+      cattle: {symbol: "LE=F", name: "Live cattle", items: [BEEF, COOKED_BEEF, LEATHER, MILK_BUCKET]}
+      hogs: {symbol: "HE=F", name: "Lean hogs", items: [PORKCHOP, COOKED_PORKCHOP]}
+      sugar: {symbol: "SB=F", name: "Sugar", items: [SUGAR, SUGAR_CANE]}
+      cocoa: {symbol: "CC=F", name: "Cocoa", items: [COCOA_BEANS, COOKIE]}
+      cotton: {symbol: "CT=F", name: "Cotton", items: ["#wool", STRING]}
+  # What merchants pay for things ArcShop's catalog doesn't list (mob drops,
+  # wool...). Items it does list (about 90) are bought at sell-ratio x ArcShop's price.
+  prices:
+    ROTTEN_FLESH: 0.01
+    BONE: 0.03
+    STRING: 0.03
+    GUNPOWDER: 0.10
+    SPIDER_EYE: 0.03
+    ARROW: 0.02
+    LEATHER: 0.10
+    FEATHER: 0.01
+    EGG: 0.01
+    WHITE_WOOL: 0.04
+    MUTTON: 0.04
+    BEEF: 0.05
+    PORKCHOP: 0.05
+    CHICKEN: 0.04
+    APPLE: 0.04
+    STICK: 0.005
+    OAK_SAPLING: 0.01
+    BIRCH_SAPLING: 0.01
+    SPRUCE_SAPLING: 0.01
+    MILK_BUCKET: 0.10
+  # What merchants charge when you buy materials for a build (Build -> Materials)
+  # for blocks ArcShop doesn't sell and nobody can craft. Built in: every kind of
+  # leaves, flower and sapling, bushes (firefly bush...), vines, moss, grass,
+  # ferns, lily pads, mushrooms, kelp and other plants, mud, ice, snow blocks and
+  # cobwebs at 2.00 each. List an item here to change its price; 0
+  # stops selling it. Anything else a build needs is crafted from what's for sale.
+  build-prices: {}
+  # Anything else a build needs that /shop doesn't list and nobody can craft from
+  # what it sells (leather for a lectern's books, flint for a fletching table,
+  # oxidized copper...) at this price each, for builds only. Ores, netherite,
+  # treasure and boss items are never sold. 0 turns it off.
+  build-fallback-price: 2.0
+
+# On joining, a report of what your employees did while you were away (and
+# the money: goods stored, sales, wages, profit). Also /employees report [hours]
+# and /employees profit [days] at any time.
+report:
+  on-join: true
+  # Shorter absences don't get a report.
+  min-away-minutes: 30
+
+# Employees change blocks directly, so CoreProtect wouldn't see it. With this,
+# their changes and chest visits are logged under user-prefix + their name:
+# /co inspect shows "#Ned", and /co rollback u:#Ned t:2h undoes Ned's work.
+coreprotect:
+  enabled: true
+  user-prefix: "#"
+
+# Schematic files builders can build: plugins/ArcEmployees/blueprints (and
+# plugins/WorldEdit/schematics). Formats: .schem, .schematic, .litematic, .nbt.
+blueprints:
+  # /employees blueprints download <link> (needs employees.blueprints.download, ops by default).
+  downloads-enabled: true
+  max-download-mb: 50
+  # /employees blueprints upload (and /employees homes upload) give a link to
+  # a page where you drop files from your computer. Empty (the default) uses
+  # this plugin's own web server: web.public-url + "arc/upload/". Set a URL only
+  # to use an outside site that reads plugins/ArcEmployees/uploads instead.
+  upload-url: ""
+
+# Each employee delivers to exactly ONE place: a VirtualChests chest, a placed
+# chest, or its own backpack (/employees storage). Items move out of the
+# backpack when delivered, so nothing is ever counted twice. Turn a kind off
+# here to forbid it server-wide; employees set to a disabled kind keep their
+# harvest in their backpack.
+physical-chests:
+  enabled: true
+
+virtual-chests:
+  # Deliver harvests into the owner's VirtualChests (/chest N) when that plugin is present.
+  enabled: true
+  # New employees get the owner's first empty chest number at or above this.
+  first-chest: 5
+  # How often harvests are sent to the chest.
+  delivery-interval-seconds: 30
+  # When an employee's chest is full it claims the next empty /chest number
+  # that no other employee uses (and tells you), up to this many extra chests.
+  # 0 = never; it then stops with "storage full" until you empty the chest.
+  overflow-chests: 10
+  # Chest numbers come in groups, one per job, so you know what's where:
+  # lumberjacks get /chest 10-19, farmers 20-29 and so on. New employees and
+  # overflow take the first free (unused, empty) number in their job's group.
+  # /employees chests shows them all; a full group can be moved to new numbers.
+  group-size: 50
+  groups:
+    lumberjack: 100
+    farmer: 150
+    miner: 200
+    quarry: 250
+    builder: 300
+    smelter: 350
+    rancher: 400
+    guard: 450
+    bodyguard: 500
+    trader: 550
+    courier: 600
+
+# Names picked for employees hired without one.
+names: [Ada, Arlo, Bea, Bram, Cleo, Dex, Edie, Fern, Gus, Hazel, Ivo, Juno, Kit, Lou, Mabel,
+        Ned, Opal, Pip, Quill, Rosa, Sid, Tess, Ugo, Vera, Wren, Xavi, Yara, Zed]
+
+# The web map and 3D build planner. BlueMap's map is served through nginx at
+# public-url (signed in from the game with /map); the planner (this plugin)
+# listens on bind:port and nginx puts it at public-url + "arc/".
+web:
+  enabled: true
+  public-url: "https://your-domain.example/map/"
+  bind: 127.0.0.1
+  port: 8101

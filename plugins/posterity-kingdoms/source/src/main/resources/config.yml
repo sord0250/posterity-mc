@@ -1,0 +1,4 @@
+# PosterityKingdoms config.
+
+# Shown before every amount of money.
+currency-symbol: "$"
