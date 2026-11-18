@@ -77,9 +77,7 @@ public final class SellMenu implements InventoryHolder {
                 "<gray>(the market fills up) and recover over a day.",
                 "<gray>Earned in the last 24h: <white>" + Msg.money(market.earnedToday(player.getUniqueId()))
                         + (market.limit(player.getUniqueId()) > 0 ? " <gray>of <white>" + Msg.money(market.limit(player.getUniqueId())) : ""),
-                market.limitLine(player.getUniqueId()),
-                plugin.settings().marketWagesRaiseCap && market.limit(player.getUniqueId()) > 0
-                        ? "<dark_gray>(The limit includes a day's wages for your staff.)" : "")));
+                market.limitLine(player.getUniqueId()))));
         inv.setItem(PRICES, button(Material.PAPER, "<aqua>Price list", List.of("<gray>What " + merchant + " pays today.", "", "<yellow>Click to see")));
         List<String> lore = new ArrayList<>();
         lore.add("<gray>" + quote.count() + " items for <green>" + Msg.money(quote.money()));

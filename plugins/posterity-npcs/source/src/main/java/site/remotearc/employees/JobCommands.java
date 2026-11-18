@@ -794,7 +794,6 @@ final class JobCommands {
                 if (args.length < 3 || !s.hasPermission("employees.admin")) {
                     Msg.send(s, mode.equals("limit")
                             ? "<gray>Daily selling limit: <white>" + Msg.money(plugin.settings().marketDailyCap) + "</white> at full price"
-                                    + (plugin.settings().marketWagesRaiseCap ? ", plus a day of wages" : "")
                                     + (s.hasPermission("employees.admin") ? ". Change it: <white>/" + label + " market limit \\<amount></white> (0 = none)" : ".")
                             : "<gray>Past the limit merchants pay <white>" + Math.round(plugin.settings().marketOverRate * 100) + "%</white>"
                                     + (s.hasPermission("employees.admin") ? ". Change it: <white>/" + label + " market overlimit \\<percent></white> (0 = stop buying)" : "."));

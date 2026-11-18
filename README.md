@@ -29,11 +29,13 @@ Aliases: `/kd`, `/kingdoms`. Permissions: `posteritykingdoms.use` (default: ever
 
 ## Posterity NPCs
 
-Shift-right-click a grown-up villager (or `/employees hire <job>`) to hire it: the villager is
-replaced by a skinned NPC that does a job - farming, chopping trees, mining, quarrying, building
+Shift-right-click a grown-up villager (or `/employees hire <job>`) and pick a job: the villager
+asks for the tools of the trade and some food (or reserve it, and it waits by its bed until you're
+back). Hire it and it's replaced by a skinned NPC that does a job - farming, chopping trees, mining, quarrying, building
 from a schematic, smelting, ranching, trading, guarding, running courier routes between chests,
-and more. Employees are paid wages through Vault, can own a home, and store their work in
-regular or virtual chests. If Posterity Kingdoms is installed, a newly hired NPC is automatically
+and more. Employees aren't paid: they eat from a pantry chest, keep a working day (work, an
+evening off, sleep), show what they're doing over their heads, can own a home, and store their
+work in regular or virtual chests. Clicking one opens its card. If Posterity Kingdoms is installed, a newly hired NPC is automatically
 tagged with the kingdom its owner (or ruler) belongs to, so `/employees info` shows which
 kingdom it's part of.
 
@@ -48,7 +50,7 @@ Main commands (aliases `/emp`, `/staff`):
 | `/employees build`, `blueprints` | Builder jobs: assign a schematic to build. |
 | `/employees skin`, `rename`, `herd` | Cosmetic and job-specific settings. |
 | `/employees pause` / `resume` / `move` / `tp` | Pauses work, relocates, or teleports to an employee. |
-| `/employees pay <name>` | Pays an on-strike employee's wage manually. |
+| `/employees pantry <name>` | Shows an employee's food, or sets the chest it eats from. |
 
 A few related commands round things out: `/sort` (tidy nearby or virtual chests by category),
 `/map` (web map + 3D build planner sign-in), `/trades` (find villagers selling an item),

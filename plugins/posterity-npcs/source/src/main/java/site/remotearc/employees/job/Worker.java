@@ -40,8 +40,8 @@ public final class Worker {
 
     public enum Move { MOVING, ARRIVED, FAILED }
 
-    /** Coarse state shown under the employee's name. */
-    public enum State { WORKING, IDLE, FULL, PAUSED, STRIKE, RESTING }
+    /** Coarse state: what it's doing, broadly (see Activity for the line over its head). */
+    public enum State { WORKING, IDLE, FULL, PAUSED, HUNGRY, RESTING, OFF_DUTY }
 
     private static final int UNREACHABLE_TICKS = 1200;
     private static final int MAX_WALK_TICKS = 20 * 45;
@@ -218,10 +218,6 @@ public final class Worker {
             show("Paused", State.PAUSED);
             return;
         }
-        if (e.onStrike) {
-            show("On strike: " + e.ownerName() + " couldn't pay the " + Msg.money(jobSettings().wage()) + " wage", State.STRIKE);
-            return;
-        }
         if (plugin.manager().resting(e)) {
             if (state != State.RESTING) interrupt();
             show("Resting: nobody's on the server", State.RESTING);
@@ -254,6 +250,37 @@ public final class Worker {
             job.tick(this);
         } catch (RuntimeException ex) {
             plugin.getLogger().log(Level.WARNING, e.name + " hit an error in the background", ex);
+        }
+
+        // Food: it eats as the day goes by, and tops up from its pantry when it runs low.
+        if (site.remotearc.employees.Food.enabled(plugin)) {
+            e.food = Math.max(0, e.food - site.remotearc.employees.Food.perTick(plugin));
+            if (cooldownReady("food", 100) || (e.food <= 0 && cooldownReady("food-hungry", 40))) {
+                site.remotearc.employees.Food.topUp(plugin, e);
+            }
+            if (e.food <= 0) {
+                String hungry = "Too hungry to work: no food in " + site.remotearc.employees.Food.pantryName(plugin, e);
+                if (state != State.HUNGRY) {
+                    interrupt();
+                    // Tells the owner (chat, or mail when offline) and logs it once.
+                    plugin.manager().notifyOwner(e, "<red>" + e.name + " is too hungry to work.</red> <gray>Put some food in "
+                            + site.remotearc.employees.gui.Describe.esc(site.remotearc.employees.Food.pantryName(plugin, e)) + ".", true);
+                    e.status = hungry;
+                }
+                show(hungry, State.HUNGRY);
+                return;
+            }
+        }
+
+        // The working day: off duty in the evening and at night.
+        site.remotearc.employees.Schedule.Period period = site.remotearc.employees.Schedule.period(plugin, e, world());
+        if (period != lastPeriod) {
+            lastPeriod = period;
+            interrupt();   // downs tools at the end of the day; gets up in the morning
+        }
+        if (period != site.remotearc.employees.Schedule.Period.WORK) {
+            offDuty(period);
+            return;
         }
         if (task == null) {
             if (cooldown > 0) {
@@ -302,6 +329,46 @@ public final class Worker {
                 rescue();
             }
         }
+    }
+
+    private site.remotearc.employees.Schedule.Period lastPeriod = site.remotearc.employees.Schedule.Period.WORK;
+
+    /** The evening (relaxing nearby) or the night (asleep, in its bed if it can get there). */
+    private void offDuty(site.remotearc.employees.Schedule.Period period) {
+        boolean night = period == site.remotearc.employees.Schedule.Period.NIGHT;
+        if (task == null) {
+            if (cooldown > 0) {
+                cooldown--;
+                if (!night && random.nextInt(80) == 0) glanceAround();
+                return;
+            }
+            task = night ? Distractions.sleep(this) : Distractions.relax(this);
+            if (task == null) {
+                cooldown = 100;
+                show(night ? "Sleeping" : "Relaxing after work", State.OFF_DUTY);
+                return;
+            }
+        }
+        show(task.status(this), State.OFF_DUTY);
+        Task.Result result;
+        try {
+            result = task.tick(this);
+        } catch (RuntimeException ex) {
+            plugin.getLogger().log(Level.WARNING, e.name + " hit an error while off duty", ex);
+            result = Task.Result.FAILED;
+        }
+        if (result != Task.Result.RUNNING) {
+            Task finished = task;
+            task = null;
+            finished.end(this);
+            clearPath();
+            cooldown = 20 + random.nextInt(100);
+        }
+    }
+
+    /** True while it's off duty (evening or night) by the working day. */
+    public boolean offDuty() {
+        return state == State.OFF_DUTY;
     }
 
     /**
@@ -386,10 +453,13 @@ public final class Worker {
         if (!status.equals(e.status) && s != State.WORKING && s != State.PAUSED && EventLog.isProblem(status)) {
             plugin.manager().events().add(e.owner, e.name, status, true);
         }
+        boolean changed = !status.equals(e.status);
         e.status = status;
         if (s != state) {
             state = s;
             plugin.manager().updateLabel(e);
+        } else if ((changed && cooldownReady("label", 20)) || cooldownReady("label-refresh", 100)) {
+            plugin.manager().updateLabel(e);   // the line over its head follows what it's doing
         }
     }
 

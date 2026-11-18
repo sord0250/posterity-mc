@@ -136,18 +136,8 @@ public final class Avatars {
                 m.setProfile(e.skin.profile(e.id));
                 shownSkin.put(e.id, e.skin);
             }
-            m.customName(Component.text(e.name, NamedTextColor.GOLD));
-            Worker.State s = e.worker == null ? null : e.worker.state();
-            NamedTextColor color = s == null ? NamedTextColor.DARK_GRAY : switch (s) {
-                case WORKING -> NamedTextColor.GREEN;
-                case IDLE -> NamedTextColor.GRAY;
-                case FULL -> NamedTextColor.YELLOW;
-                case PAUSED, RESTING -> NamedTextColor.DARK_GRAY;
-                case STRIKE -> NamedTextColor.RED;
-            };
-            if (EventLog.isProblem(e.status)) color = NamedTextColor.GOLD;
-            String status = e.status.length() > 42 ? e.status.substring(0, 41) + "…" : e.status;
-            m.setDescription(Component.text(e.job.display() + ": " + status, color));
+            m.customName(Component.text(e.name, NamedTextColor.GOLD).append(Component.text(" · " + e.job.display(), NamedTextColor.GRAY)));
+            m.setDescription(site.remotearc.employees.Activity.line(plugin, e));
         }
         if (changed) save();
     }

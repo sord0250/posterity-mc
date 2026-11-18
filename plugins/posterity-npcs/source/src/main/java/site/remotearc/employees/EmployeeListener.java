@@ -29,7 +29,7 @@ final class EmployeeListener implements Listener {
         plugin.manager().worldLoaded(ev.getWorld());
     }
 
-    /** Counts toward "a player was on today" for wages, even for a short visit between payroll checks. */
+    /** Keeps track of when a player was last on the server. */
     @EventHandler
     public void onJoin(org.bukkit.event.player.PlayerJoinEvent ev) {
         plugin.manager().playerSeen();
@@ -126,7 +126,7 @@ final class EmployeeListener implements Listener {
                 plugin.manager().setPaused(e, !e.paused);
                 Msg.send(p, e.paused ? "<gray>" + e.name + " is paused." : "<green>" + e.name + " is back at work.");
             } else {
-                new EmployeeMenu(plugin, e, null).open(p);
+                site.remotearc.employees.gui.EmployeeCard.show(plugin, p, e);
             }
             return;
         }
@@ -154,10 +154,10 @@ final class EmployeeListener implements Listener {
         Employee e = plugin.manager().byEntity(clicked);
         if (e == null) return;
         if (plugin.manager().canManage(p, e)) {
-            new EmployeeMenu(plugin, e, null).open(p);
+            site.remotearc.employees.gui.EmployeeCard.show(plugin, p, e);
         } else {
             Msg.send(p, "<gold>" + e.name + "</gold> <gray>is " + e.ownerName() + "'s " + e.job.display().toLowerCase()
-                    + ". <white>" + e.status.replace("<", "\\<"));
+                    + ". " + Activity.mini(plugin, e));
         }
     }
 

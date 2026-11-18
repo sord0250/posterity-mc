@@ -82,7 +82,7 @@ public final class Reports {
             if (!made.isEmpty()) parts.add(made);
             if (b.sales > 0) parts.add("sold for " + Msg.money(b.sales));
             String line = "<gold>" + esc(e.name) + "</gold> <dark_gray>(" + e.job.display() + ")</dark_gray> <gray>"
-                    + esc(parts.isEmpty() ? "just drew wages" : String.join(" · ", parts)) + "</gray> " + profit(b.profit());
+                    + esc(parts.isEmpty() ? "nothing to show yet" : String.join(" · ", parts)) + "</gray> " + profit(b.profit());
             s.sendMessage(Msg.parse(line).hoverEvent(HoverEvent.showText(Msg.parse(breakdown(b)))));
         }
         if (!quiet.isEmpty()) {
@@ -94,7 +94,7 @@ public final class Reports {
         }
         List<String> problems = new ArrayList<>();
         for (Employee e : mine) {
-            if (e.onStrike || (EventLog.isProblem(e.status) && !e.paused)) problems.add("<gold>" + esc(e.name) + ":</gold> <yellow>" + esc(e.status));
+            if (EventLog.isProblem(e.status) && !e.paused) problems.add("<gold>" + esc(e.name) + ":</gold> <yellow>" + esc(e.status));
         }
         if (!problems.isEmpty()) {
             s.sendMessage(Msg.parse("<red>Needs attention:"));
@@ -142,7 +142,7 @@ public final class Reports {
         }
         s.sendMessage(Msg.parse("<aqua>Altogether</aqua> " + profit(total.profit()) + " <gray>(" + breakdown(total).replace("\n", " · ") + ")"));
         s.sendMessage(Msg.parse("<dark_gray>Hover over a name for the details. Profit = goods put in storage + sales"
-                + " - materials taken from storage - wages."));
+                + " - materials taken from storage."));
     }
 
     /** Profit lines for an employee's menu. */
@@ -176,7 +176,7 @@ public final class Reports {
         l.add("<gray>Sales: <green>" + Msg.money(b.sales));
         if (b.taken > 0) l.add("<gray>Goods taken from storage: <gold>-" + Msg.money(b.taken)
                 + (b.used.isEmpty() ? "" : " <dark_gray>(" + esc(top(b.used, 2)) + ")"));
-        l.add("<gray>Wages: <red>-" + Msg.money(b.wages));
+        if (b.wages > 0) l.add("<gray>Wages (from before food): <red>-" + Msg.money(b.wages));
         return String.join("\n", l);
     }
 

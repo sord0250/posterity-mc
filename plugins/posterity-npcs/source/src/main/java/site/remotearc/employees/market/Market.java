@@ -267,13 +267,11 @@ public final class Market {
 
     /**
      * The day's full-price limit for a player (0 = none): the configured amount
-     * plus, with market.wages-raise-limit, a day's wages for their employees,
-     * so paying the staff never eats into what they may make for themselves.
      */
     public double limit(UUID player) {
         double cap = plugin.settings().marketDailyCap;
         if (cap <= 0) return 0;
-        return plugin.settings().marketWagesRaiseCap ? cap + plugin.manager().dailyWages(player) : cap;
+        return cap;
     }
 
     /** One line about the limit for menus: "$84 of $340 at full price; after that merchants pay 25%". */

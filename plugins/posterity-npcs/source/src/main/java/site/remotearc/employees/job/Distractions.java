@@ -47,7 +47,11 @@ public final class Distractions {
         if (w.now() < w.calmUntil || !w.cooldownReady("personality", 100)) return null;
         // A bodyguard following its owner stays with them; nobody gets distracted while under attack or (guards) with enemies about.
         if (!w.job.wandersHome(w) || threatened(w)) return null;
-        Random r = w.random();
+        return trait(w, p, w.random());
+    }
+
+    /** What its trait has it do now, if there's the chance for it here (randomly: not every time there is). */
+    private static Task trait(Worker w, Personality p, Random r) {
         return switch (p.kind) {
             case FOLLOW -> {
                 LivingEntity a = nearestLoved(w, p);
@@ -74,6 +78,80 @@ public final class Distractions {
             }
             case WANDER -> r.nextInt(24) == 0 ? Wander.find(w, ticks(r)) : null;
         };
+    }
+
+    // ── off duty ──────────────────────────────────────────────────────────
+
+    /**
+     * The evening, after work: something pleasant nearby. Its own pastime when
+     * it can (follow the sheep, a swim), otherwise warm up by a campfire, chat
+     * with someone, or stroll about. Null if there's nothing to do here (it
+     * just stands about, looking round).
+     */
+    static Task relax(Worker w) {
+        if (!w.e.isLoaded()) return null;
+        Random r = w.random();
+        Personality p = w.e.personality;
+        Distraction own = null;
+        if (p != null && w.settings().personalitiesEnabled && w.job.wandersHome(w)
+                && trait(w, p, r) instanceof Distraction d) own = d;
+        if (own == null) {
+            Block c = nearestBlock(w, LIT_CAMPFIRE);
+            if (c != null && r.nextInt(2) == 0) own = new Admire(c, ticks(r), "warming up by the campfire", Particle.SMOKE, false, LIT_CAMPFIRE);
+        }
+        if (own == null && r.nextInt(2) == 0) {
+            Entity mate = someoneToChatWith(w);
+            if (mate != null) own = new Chat(mate, ticks(r));
+        }
+        if (own == null) own = Wander.find(w, ticks(r));
+        if (own != null) own.label = "Relaxing";
+        return own;
+    }
+
+    /** Night: off to bed (its home's, if it can get there), and asleep until morning. */
+    static Task sleep(Worker w) {
+        return w.e.isLoaded() ? new Sleep() : null;
+    }
+
+    /** Sleeps until the night is over (the worker interrupts it when work starts). */
+    static final class Sleep extends Distraction {
+        private Vector bed;
+        private boolean there;
+
+        Sleep() {
+            super(20 * 60 * 20);
+            label = "Sleeping";
+        }
+
+        @Override
+        void start(Worker w) {
+            var h = w.e.house;
+            if (h == null || !h.world.equals(w.world().getName()) || !loaded(w.world(), h.bed.x(), h.bed.z())) return;
+            Vector v = new Vector(h.bed.x() + 0.5, h.bed.y(), h.bed.z() + 0.5);
+            if (v.distanceSquared(w.e.location.toVector()) <= 96 * 96) bed = v;
+        }
+
+        @Override
+        String doing(Worker w) {
+            return bed == null ? "no bed of their own" : there ? "in bed" : "heading home to bed";
+        }
+
+        @Override
+        public String status(Worker w) {
+            return bed == null ? "Sleeping rough (no home yet)" : there ? "Sleeping in bed" : "Heading home to bed";
+        }
+
+        @Override
+        Result step(Worker w) {
+            if (bed != null && !there) {
+                Worker.Move m = walkNear(w, bed, 1.5);
+                if (m == Worker.Move.MOVING) return Result.RUNNING;
+                if (m == Worker.Move.FAILED) bed = null;   // can't get home: sleeps where it is
+                there = true;
+            }
+            pose(w, Pose.SLEEPING);
+            return Result.RUNNING;
+        }
     }
 
     /** A minute or two. */
@@ -200,6 +278,8 @@ public final class Distractions {
         private Pathfinder.Goal goal;
         private Vector goalAt;
         private long goalSince;
+        /** What the status line starts with: "Distracted" at work, "Relaxing" off duty. */
+        String label = "Distracted";
 
         Distraction(int length) {
             this.length = length;
@@ -242,7 +322,7 @@ public final class Distractions {
 
         @Override
         public String status(Worker w) {
-            return "Distracted: " + doing(w);
+            return label + ": " + doing(w);
         }
 
         @Override
@@ -541,6 +621,8 @@ public final class Distractions {
 
         @Override
         String doing(Worker w) {
+            Employee other = w.plugin().manager().byEntity(mate);
+            if (other != null) return "chatting with " + other.name;
             String who = mate instanceof Player p ? p.getName() : mate.customName() != null
                     ? net.kyori.adventure.text.serializer.plain.PlainTextComponentSerializer.plainText().serialize(mate.customName()) : "someone";
             return "chatting with " + who;

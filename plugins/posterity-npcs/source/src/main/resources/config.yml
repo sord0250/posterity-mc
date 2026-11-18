@@ -33,8 +33,9 @@ homes:
   self-build-break-minutes: 5
 
 # Hiring villagers. Shift-right-click a grown-up villager (or look at one and
-# type /employees hire <job>) and pick a job: the villager becomes an employee
-# (a player-shaped NPC with a skin) standing where it stood. Free for now.
+# type /employees hire <job>) and pick a job: the villager asks for the tools
+# of the job and some food (see hiring below), and once you hand them over it
+# becomes an employee (a player-shaped NPC with a skin) standing where it stood.
 villager-hiring:
   # Employees come only from villagers. /employees hire with no villager in
   # front of you (an employee out of nothing, where you stand) is admins only.
@@ -72,18 +73,56 @@ default-area-radius: 8
 # Blocks per tick an employee walks (a player walks about 0.216).
 walk-speed: 0.2
 
-payroll:
-  # Wages are taken from the owner's balance once per interval, in advance.
-  # If the owner can't pay, the employee goes on strike until paid.
-  interval-hours: 24
-  # Tell offline owners about strikes with Essentials mail.
-  mail-when-offline: true
-  # Employees rest while nobody is on the server, unless you told one to keep
-  # working while everyone's away (its menu, or /employees away <name> work).
-  rest-when-server-empty: true
-  # No wages for a pay period (a day) in which no player was online at all:
-  # the next one is simply free. Employees working while away are always paid.
-  only-days-with-players: true
+# Employees rest while nobody is on the server, unless you told one to keep
+# working while everyone's away (its menu, or /employees away <name> work).
+rest-when-server-empty: true
+# Tell offline owners about trouble (an employee too hungry to work) with
+# Essentials mail.
+mail-when-offline: true
+
+# Food. Employees aren't paid: they eat. Each one keeps a small store of food
+# and tops it up from its pantry: the chest you set with Set pantry in its
+# menu (or /employees pantry <name>), otherwise the chest it delivers to.
+# With nothing left to eat it stops working until there's food again.
+# An item's food points are its nutrition plus saturation, as for a player:
+# bread is 11, a cooked steak 20.8, a carrot 6.6, so better food lasts longer.
+food:
+  # Food points eaten per Minecraft day (20 minutes): 11 = one bread a day.
+  points-per-day: 11
+  # When its store drops under this many days of food it takes more from the
+  # pantry, enough for this many days.
+  top-up-below-days: 1
+  top-up-to-days: 3
+  # Never eaten, even when it's all there is.
+  never-eat: [ROTTEN_FLESH, SPIDER_EYE, POISONOUS_POTATO, PUFFERFISH, CHICKEN, SUSPICIOUS_STEW,
+              CHORUS_FRUIT, GOLDEN_APPLE, ENCHANTED_GOLDEN_APPLE]
+
+# What it takes to hire a villager: the tools of its trade (hire-items under
+# each job below) plus food. The tools become theirs; the food goes into their
+# food store. A kingdom's settlers are free.
+hiring:
+  food: BREAD
+  food-amount: 16
+  # A little more food for every employee you already have, up to food-max.
+  food-extra-per-employee: 2
+  food-max: 64
+  # Can't afford it yet? Reserve the villager: it goes and stands by its bed
+  # and waits for you (only you can hire it) for this many real days. 0 = for ever.
+  reserve-days: 7
+  # How many villagers one player may have reserved at once.
+  max-reserved: 3
+
+# The working day, in hours on the Minecraft clock (6 = sunrise, 18 = sunset,
+# 0 = midnight). Employees work from work-start to work-end, relax in the
+# evening (stroll, chat, sit by a campfire) and sleep from sleep-start until
+# work-start: in their home's bed if they have one, otherwise where they are.
+schedule:
+  enabled: true
+  work-start: 6
+  work-end: 18
+  sleep-start: 21
+  # These stay on duty all evening and night.
+  night-shift-jobs: [guard, bodyguard]
 
 # work-speed: 1.0 = exactly as fast as a survival player holding the same tool
 # (vanilla mining times, the pause between blocks, one right-click per 4 ticks).
@@ -91,8 +130,8 @@ payroll:
 # chops faster than an iron one.
 jobs:
   lumberjack:
-    hire-cost: 50
-    wage: 10
+    # What a villager asks for to take this job (plus the food under hiring).
+    hire-items: [IRON_AXE]
     tool: IRON_AXE
     work-speed: 1.0
     # Saplings of each kind kept in the backpack for planting instead of delivered.
@@ -106,8 +145,8 @@ jobs:
     spacing: 3
     row-spacing: 5
   farmer:
-    hire-cost: 50
-    wage: 10
+    # What a villager asks for to take this job (plus the food under hiring).
+    hire-items: [IRON_HOE]
     tool: IRON_HOE
     work-speed: 1.0
     # Seeds of each kind kept for replanting instead of delivered.
@@ -117,8 +156,8 @@ jobs:
   # Hiring sets an area of area-radius around you, from area-below blocks under
   # you to area-above over you; /employees area <name> worldedit sets any box.
   miner:
-    hire-cost: 100
-    wage: 15
+    # What a villager asks for to take this job (plus the food under hiring).
+    hire-items: [IRON_PICKAXE]
     tool: IRON_PICKAXE
     work-speed: 1.0
     area-radius: 24
@@ -140,8 +179,8 @@ jobs:
   # Digs out its whole area, layer by layer from the top, leaving a spiral
   # staircase along the wall. A quarry's filter lists items it throws away.
   quarry:
-    hire-cost: 100
-    wage: 15
+    # What a villager asks for to take this job (plus the food under hiring).
+    hire-items: [IRON_PICKAXE, IRON_SHOVEL]
     tool: IRON_PICKAXE
     work-speed: 1.0
     # Hiring: a 9x9 hole from the block you stand on down area-below blocks.
@@ -156,8 +195,8 @@ jobs:
   # Builds blueprints (/employees blueprints) block by block, taking materials
   # from its backpack and its supply (/employees supply).
   builder:
-    hire-cost: 100
-    wage: 20
+    # What a villager asks for to take this job (plus the food under hiring).
+    hire-items: [IRON_PICKAXE, IRON_SHOVEL]
     # Its tool tier: it carries a pickaxe, axe, shovel and hoe of this tier
     # and uses whichever clears a block fastest.
     tool: IRON_PICKAXE
@@ -174,8 +213,8 @@ jobs:
   # Keeps furnaces, smokers and blast furnaces in its area loaded, fuelled and
   # emptied. Smelting happens in the real furnaces at vanilla speed.
   smelter:
-    hire-cost: 60
-    wage: 10
+    # What a villager asks for to take this job (plus the food under hiring).
+    hire-items: [FURNACE]
     tool: COAL
     work-speed: 1.0
     area-radius: 4
@@ -191,8 +230,8 @@ jobs:
   # kind, culls the oldest above it, shears sheep, milks into empty buckets
   # and collects eggs. Never touches named, tamed, leashed or baby animals.
   rancher:
-    hire-cost: 60
-    wage: 10
+    # What a villager asks for to take this job (plus the food under hiring).
+    hire-items: [LEAD 2, SHEARS]
     tool: IRON_SWORD
     work-speed: 1.0
     herd-size: 10
@@ -208,8 +247,8 @@ jobs:
   # Patrols its area and fights hostile mobs within 8 blocks of it, at
   # player sword speed. Torches in its backpack light up dark ground.
   guard:
-    hire-cost: 80
-    wage: 12
+    # What a villager asks for to take this job (plus the food under hiring).
+    hire-items: [IRON_SWORD]
     tool: IRON_SWORD
     work-speed: 1.0
     area-radius: 16
@@ -226,8 +265,8 @@ jobs:
   # work area, when told to stay: /employees stay <name>). With torches in its
   # backpack it lights dark spots around you. Picks up what the mobs drop.
   bodyguard:
-    hire-cost: 120
-    wage: 15
+    # What a villager asks for to take this job (plus the food under hiring).
+    hire-items: [IRON_SWORD, SHIELD]
     tool: IRON_SWORD
     work-speed: 1.0
     # How far from you it goes after mobs.
@@ -239,8 +278,8 @@ jobs:
   # whenever the villager has stock, paying from its backpack and your
   # storage. One trade per right-click (4 ticks). Villagers in its area.
   trader:
-    hire-cost: 80
-    wage: 12
+    # What a villager asks for to take this job (plus the food under hiring).
+    hire-items: [WRITABLE_BOOK]
     tool: EMERALD
     work-speed: 1.0
     area-radius: 8
@@ -258,8 +297,8 @@ jobs:
   # Placed chests within walk-distance blocks are walked to; farther ones (or
   # other worlds) it takes a shortcut to. /chest numbers work from anywhere.
   courier:
-    hire-cost: 60
-    wage: 8
+    # What a villager asks for to take this job (plus the food under hiring).
+    hire-items: [BUNDLE]
     tool: BUNDLE
     work-speed: 1.0
     area-radius: 3
@@ -283,9 +322,6 @@ market:
   # (0.25 = a quarter; 0 = they stop buying). Employees stop at the limit and
   # keep their goods in storage, so nothing gets dumped cheaply by accident.
   over-limit-rate: 0.25
-  # Add a day of your employees' wages to your limit, so paying your staff
-  # never eats into what you can make for yourself.
-  wages-raise-limit: true
   # false: players have to walk up to a merchant to sell.
   sell-anywhere: false
   # Trade only at merchants: they sell ArcShop's catalog (at its prices,
@@ -358,7 +394,7 @@ market:
   build-fallback-price: 2.0
 
 # On joining, a report of what your employees did while you were away (and
-# the money: goods stored, sales, wages, profit). Also /employees report [hours]
+# the money: goods stored and sales). Also /employees report [hours]
 # and /employees profit [days] at any time.
 report:
   on-join: true

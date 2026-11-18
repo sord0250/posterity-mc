@@ -23,7 +23,8 @@ public final class Settings {
      * The area values are what hiring sets up: radius blocks each way, from
      * areaBelow blocks below the hiring spot to areaAbove above it.
      */
-    public record JobSettings(double hireCost, double wage, Material tool, double workSpeed, int reserve,
+    /** hireItems: the tools of the trade a villager asks for to take the job (the food comes on top, see hireFood). */
+    public record JobSettings(List<org.bukkit.inventory.ItemStack> hireItems, Material tool, double workSpeed, int reserve,
                               int areaRadius, int areaBelow, int areaAbove, int maxAreaSize, int maxAreaHeight) {}
 
     public final String currency;
@@ -31,10 +32,33 @@ public final class Settings {
     public final boolean keepLoaded;
     public final int maxAreaSize;
     public final int defaultRadius;
-    public final long payIntervalMillis;
     public final boolean mailWhenOffline;
-    public final boolean payOnlyDaysWithPlayers;
     public final boolean restWhenEmpty;
+
+    // Food (see Food): employees eat from a pantry instead of being paid.
+    /** Food points (an item's nutrition plus saturation: bread is 11) eaten per Minecraft day. */
+    public final double foodPerDay;
+    /** Never eaten, even when it's all there is (rotten flesh, golden apples...). */
+    public final Set<Material> foodNever;
+    /** When its own store drops under this many days, it takes more from the pantry, up to foodTopUpDays. */
+    public final double foodLowDays;
+    public final double foodTopUpDays;
+
+    // Hiring cost: tools of the trade (per job) plus food.
+    public final Material hireFood;
+    public final int hireFoodAmount;
+    public final int hireFoodPerEmployee;
+    public final int hireFoodMax;
+    /** Days a villager stays reserved for someone before going back to village life; 0 = for ever. */
+    public final double reserveDays;
+    /** How many villagers one player may have reserved at once. */
+    public final int maxReserved;
+
+    // The working day (see Schedule), in hours on the Minecraft clock (6 = sunrise, 18 = sunset).
+    public final boolean scheduleEnabled;
+    public final double workStart, workEnd, sleepStart;
+    /** Jobs that stay on duty through the evening and night. */
+    public final Set<JobType> nightShift;
     public final boolean vcEnabled;
     public final boolean chestsEnabled;
     public final int vcFirstChest;
@@ -89,8 +113,6 @@ public final class Settings {
     public final double marketDailyCap;
     /** Past the day's limit merchants still buy from players, at this share of the price (0 = not at all). */
     public final double marketOverRate;
-    /** The day's limit grows by the owner's daily wage bill. */
-    public final boolean marketWagesRaiseCap;
     public final boolean reportOnJoin;
     public final long reportMinAwayMillis;
     public final boolean coreProtect;
@@ -133,10 +155,29 @@ public final class Settings {
         keepLoaded = c.getBoolean("keep-work-sites-loaded", true);
         maxAreaSize = clamp(c.getInt("max-area-size", 48), 3, 128);
         defaultRadius = clamp(c.getInt("default-area-radius", 8), 1, maxAreaSize / 2);
-        payIntervalMillis = (long) (Math.max(0.05, c.getDouble("payroll.interval-hours", 24)) * 3_600_000L);
-        mailWhenOffline = c.getBoolean("payroll.mail-when-offline", true);
-        payOnlyDaysWithPlayers = c.getBoolean("payroll.only-days-with-players", true);
-        restWhenEmpty = c.getBoolean("payroll.rest-when-server-empty", true);
+        mailWhenOffline = c.getBoolean("mail-when-offline", c.getBoolean("payroll.mail-when-offline", true));
+        restWhenEmpty = c.getBoolean("rest-when-server-empty", c.getBoolean("payroll.rest-when-server-empty", true));
+        foodPerDay = Math.max(0, c.getDouble("food.points-per-day", 11));
+        foodNever = MaterialList.parse(c.getStringList("food.never-eat"), log, "food.never-eat");
+        foodLowDays = Math.max(0.1, c.getDouble("food.top-up-below-days", 1));
+        foodTopUpDays = Math.max(foodLowDays, c.getDouble("food.top-up-to-days", 3));
+        Material hf = Material.matchMaterial(c.getString("hiring.food", "BREAD"));
+        hireFood = hf != null && hf.isItem() ? hf : Material.BREAD;
+        hireFoodAmount = clamp(c.getInt("hiring.food-amount", 16), 0, 64 * 9);
+        hireFoodPerEmployee = clamp(c.getInt("hiring.food-extra-per-employee", 2), 0, 64);
+        hireFoodMax = clamp(c.getInt("hiring.food-max", 64), hireFoodAmount, 64 * 9);
+        reserveDays = Math.max(0, c.getDouble("hiring.reserve-days", 7));
+        maxReserved = clamp(c.getInt("hiring.max-reserved", 3), 0, 50);
+        scheduleEnabled = c.getBoolean("schedule.enabled", true);
+        workStart = hour(c.getDouble("schedule.work-start", 6));
+        workEnd = hour(c.getDouble("schedule.work-end", 18));
+        sleepStart = hour(c.getDouble("schedule.sleep-start", 21));
+        nightShift = EnumSet.noneOf(JobType.class);
+        for (String k : c.getStringList("schedule.night-shift-jobs")) {
+            JobType t = JobType.parse(k);
+            if (t == null) log.warning("schedule.night-shift-jobs: unknown job " + k);
+            else nightShift.add(t);
+        }
         vcEnabled = c.getBoolean("virtual-chests.enabled", true);
         chestsEnabled = c.getBoolean("physical-chests.enabled", true);
         vcFirstChest = Math.max(1, c.getInt("virtual-chests.first-chest", 5));
@@ -161,9 +202,15 @@ public final class Settings {
             }
             int[] area = defaultArea(t);   // radius, below, above, max size, max height
             int maxSize = clamp(s.getInt("max-area-size", area[3]), 3, 256);
+            List<org.bukkit.inventory.ItemStack> hireItems = new java.util.ArrayList<>();
+            List<String> asked = s.isList("hire-items") ? s.getStringList("hire-items") : List.of(t.defaultTool().name());
+            for (String entry : asked) {
+                org.bukkit.inventory.ItemStack it = itemStack(entry);
+                if (it == null) log.warning("jobs." + t.key() + ".hire-items: can't read \"" + entry + "\" (write e.g. IRON_HOE or BREAD 16)");
+                else hireItems.add(it);
+            }
             jobs.put(t, new JobSettings(
-                    Math.max(0, s.getDouble("hire-cost", 50)),
-                    Math.max(0, s.getDouble("wage", 10)),
+                    List.copyOf(hireItems),
                     tool,
                     Math.max(0.05, Math.min(20, s.getDouble("work-speed", 1.0))),
                     clamp(s.getInt("reserve", defaultReserve(t)), 0, 2304),
@@ -227,7 +274,6 @@ public final class Settings {
         marketRecoveryHours = Math.max(0.1, c.getDouble("market.demand-recovery-hours", 24));
         marketDailyCap = Math.max(0, c.getDouble("market.max-income-per-day", 300));
         marketOverRate = Math.max(0, Math.min(1, c.getDouble("market.over-limit-rate", 0.25)));
-        marketWagesRaiseCap = c.getBoolean("market.wages-raise-limit", true);
         reportOnJoin = c.getBoolean("report.on-join", true);
         reportMinAwayMillis = Math.max(0, c.getLong("report.min-away-minutes", 30)) * 60_000L;
         coreProtect = c.getBoolean("coreprotect.enabled", true);
@@ -322,6 +368,30 @@ public final class Settings {
 
     public JobSettings job(JobType t) {
         return jobs.get(t);
+    }
+
+    /** "IRON_HOE", "BREAD 16" or "BREAD x16" as an item stack, or null. */
+    static org.bukkit.inventory.ItemStack itemStack(String entry) {
+        String[] parts = entry.trim().split("\\s+");
+        if (parts.length == 0 || parts.length > 2) return null;
+        Material m = Material.matchMaterial(parts[0]);
+        if (m == null || !m.isItem() || m.isAir()) return null;
+        int n = 1;
+        if (parts.length == 2) {
+            try {
+                n = Integer.parseInt(parts[1].toLowerCase(Locale.ROOT).replace("x", ""));
+            } catch (NumberFormatException ex) {
+                return null;
+            }
+        }
+        if (n < 1) return null;
+        return new org.bukkit.inventory.ItemStack(m, Math.min(n, m.getMaxStackSize() * 9));
+    }
+
+    /** An hour on the Minecraft clock, 0 up to (not including) 24. */
+    private static double hour(double h) {
+        h %= 24;
+        return h < 0 ? h + 24 : h;
     }
 
     private static int clamp(int v, int lo, int hi) {

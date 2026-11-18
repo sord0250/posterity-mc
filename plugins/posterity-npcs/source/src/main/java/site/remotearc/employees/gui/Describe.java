@@ -20,18 +20,30 @@ public final class Describe {
 
     private Describe() {}
 
-    public static String wageLine(ArcEmployees plugin, JobType job) {
+    /** "Fed: about 3 days of food, and about 2 weeks more in the pantry (/chest 12)", or the trouble. */
+    public static String foodLine(ArcEmployees plugin, Employee e) {
+        if (!site.remotearc.employees.Food.enabled(plugin)) return "<gray>Food: <white>not needed (turned off)";
+        double days = site.remotearc.employees.Food.days(plugin, e.food);
+        double stocked = site.remotearc.employees.Food.days(plugin, site.remotearc.employees.Food.inPantry(plugin, e));
+        String where = esc(site.remotearc.employees.Food.pantryName(plugin, e));
+        if (e.food <= 0) return "<red>Food: none left: too hungry to work. <gray>Put food in " + where;
+        String color = stocked < 1 ? "<gold>" : "<white>";
+        return "<gray>Food: <white>" + site.remotearc.employees.Food.daysText(days) + " <gray>eaten-in, " + color
+                + site.remotearc.employees.Food.daysText(stocked) + " <gray>more in " + where;
+    }
+
+    /** "Works 6:00 to 18:00, relaxes until 21:00, then sleeps" (or on duty all day). */
+    public static String dayLine(ArcEmployees plugin, Employee e) {
         Settings s = plugin.settings();
-        double hours = s.payIntervalMillis / 3_600_000.0;
-        String per = Math.abs(hours - 24) < 1e-6 ? "per day" : Math.abs(hours - 1) < 1e-6 ? "per hour"
-                : "every " + (hours == Math.rint(hours) ? String.valueOf((long) hours) : String.valueOf(hours)) + "h";
-        return Msg.money(s.job(job).wage()) + " " + per;
+        if (!s.scheduleEnabled) return "<gray>Day: <white>works around the clock";
+        if (s.nightShift.contains(e.job)) return "<gray>Day: <white>on duty day and night";
+        return "<gray>Day: <white>works " + site.remotearc.employees.Schedule.clock(s.workStart) + "-" + site.remotearc.employees.Schedule.clock(s.workEnd)
+                + ", relaxes until " + site.remotearc.employees.Schedule.clock(s.sleepStart) + ", then sleeps";
     }
 
     public static List<String> lore(ArcEmployees plugin, Employee e) {
         List<String> out = new ArrayList<>();
-        String statusColor = e.onStrike ? "<red>" : e.paused ? "<gray>" : "<white>";
-        out.add("<gray>Status: " + statusColor + esc(e.status));
+        out.add("<gray>Now: " + site.remotearc.employees.Activity.mini(plugin, e));
         if (plugin.settings().homesEnabled) {
             out.add(site.remotearc.employees.HomeSites.describe(plugin, e));
         }
@@ -41,9 +53,8 @@ public final class Describe {
         if (e.area != null) out.add("<gray>Work area: <white>" + e.area.describe() + (e.area.world().equals("world") ? "" : " (" + esc(e.area.world()) + ")"));
         out.add("<gray>Delivers to: <white>" + esc(e.storage.describe())
                 + (e.overflow.isEmpty() ? "" : " <gray>(+ overflow " + e.overflow.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(", ")) + ")"));
-        long left = e.paused ? e.pausedRemaining : e.paidUntil - System.currentTimeMillis();
-        out.add("<gray>Wage: <white>" + wageLine(plugin, e.job)
-                + (e.onStrike ? " <red>(unpaid)" : " <dark_gray>(next in " + Msg.duration(left) + (e.paused ? ", paused" : "") + ")"));
+        out.add(foodLine(plugin, e));
+        out.add(dayLine(plugin, e));
         if (e.worksAway) out.add("<yellow>Works while nobody's on the server");
         if (e.worker != null) {
             String detail = e.worker.detail();
@@ -76,8 +87,7 @@ public final class Describe {
                     + "; today <white>" + (long) today[0] + "</white> for <green>" + Msg.money(today[1]) + "</green><gray>, all time <white>"
                     + Msg.money(e.stats.earned));
         }
-        out.add("<gray>Delivered <white>" + NUM.format(e.stats.itemsDelivered) + "</white> items, earned <white>"
-                + Msg.money(e.stats.wagesPaid) + "</white> in total");
+        out.add("<gray>Delivered <white>" + NUM.format(e.stats.itemsDelivered) + "</white> items in total");
         return out;
     }
 

@@ -15,7 +15,10 @@ import site.remotearc.employees.util.Msg;
 import java.util.ArrayList;
 import java.util.List;
 
-/** One employee's control panel: everything the commands can do, as buttons. */
+/**
+ * One employee's full control panel ("More settings" on its card): everything
+ * the commands can do, as buttons. The card (EmployeeCard) has the everyday ones.
+ */
 public final class EmployeeMenu extends Menu {
 
     private final Employee e;
@@ -24,7 +27,7 @@ public final class EmployeeMenu extends Menu {
     public EmployeeMenu(ArcEmployees plugin, Employee e, Menu back) {
         super(plugin, 6, Component.text(e.name + " the " + e.job.display()));
         this.e = e;
-        this.back = back != null ? back : new EmployeeListMenu(plugin, e.owner, 0);
+        this.back = back;   // null: back to its card
     }
 
     @Override
@@ -135,20 +138,8 @@ public final class EmployeeMenu extends Menu {
             });
         }
 
-        if (e.onStrike) {
-            button(30, icon(Material.GOLD_INGOT, "<gold>Pay wage now", List.of(
-                    "<gray>" + e.name + " is on strike until paid.",
-                    "<gray>Wage: <white>" + Describe.wageLine(plugin, e.job),
-                    "", "<yellow>Click to pay")), (p, c) -> {
-                if (!plugin.manager().payWage(e, true)) Msg.error(p, "You can't afford " + Msg.money(plugin.settings().job(e.job).wage()) + " right now.");
-                redraw();
-            });
-        } else {
-            button(30, icon(Material.GOLD_NUGGET, "<gold>Wages", List.of(
-                    "<gray>" + Describe.wageLine(plugin, e.job) + ", paid automatically",
-                    "<gray>from " + e.ownerName() + "'s balance.",
-                    "<gray>Paid so far: <white>" + Msg.money(e.stats.wagesPaid))), null);
-        }
+        button(30, icon(e.food <= 0 ? Material.BOWL : Material.BREAD, "<aqua>Food and pantry", List.of(Describe.foodLine(plugin, e),
+                "", "<yellow>Click to change the pantry")), (p, c) -> EmployeeCard.pantry(plugin, p, e));
 
         button(31, icon(Material.ENDER_PEARL, "<aqua>Go to " + e.name, List.of("", "<yellow>Click to teleport")), (p, c) -> {
             p.closeInventory();
@@ -222,12 +213,6 @@ public final class EmployeeMenu extends Menu {
             });
         }
 
-        List<String> profitLore = new ArrayList<>(plugin.reports().menuLore(e));
-        profitLore.add("<yellow>Click for every employee's profit");
-        button(38, icon(Material.GOLD_INGOT, "<gold>Profit", profitLore), (p, c) -> {
-            p.closeInventory();
-            run(p, "profit");
-        });
 
         if (plugin.settings().homesEnabled) {
             List<String> homeLore = new ArrayList<>();
@@ -257,7 +242,10 @@ public final class EmployeeMenu extends Menu {
             run(p, "avatar " + ref(p, e) + (c.isRightClick() ? " remove" : ""));
         });
 
-        button(45, back(), (p, c) -> back.open(p));
+        button(45, back(), (p, c) -> {
+            if (back != null) back.open(p);
+            else EmployeeCard.show(plugin, p, e);
+        });
         button(49, icon(Material.BARRIER, "<red>Fire " + e.name, List.of(
                 "<gray>Their backpack is handed to you.",
                 "<gray>Wages already paid are not refunded.",
@@ -265,7 +253,7 @@ public final class EmployeeMenu extends Menu {
                 "Fire " + e.name + "?", "<red>Yes, fire " + e.name, pl -> {
             plugin.manager().fire(e, pl);
             Msg.send(pl, "<gray>You fired " + e.name + ".");
-            back.open(pl);
+            new EmployeeListMenu(plugin, e.owner, 0).open(pl);
         }, this::open).open(p));
     }
 

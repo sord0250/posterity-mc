@@ -51,13 +51,17 @@ public final class EmployeeListMenu extends Menu {
         return new ArrayList<>(owner == null ? plugin.manager().all() : plugin.manager().ownedBy(owner));
     }
 
-    /** One line of the table: a job, and up to eight of its employees. */
+    /** One line of the table: a job (null: the "needs attention" line at the top), and up to eight of its employees. */
     private record Line(JobType job, boolean first, List<Employee> people) {}
 
     @Override
     protected void draw() {
         List<Employee> all = everyone();
         List<Line> lines = new ArrayList<>();
+        // Anyone in trouble (hungry, stuck, homeless) first, so it's the first thing you see.
+        List<Employee> trouble = new ArrayList<>();
+        for (Employee e : all) if ((only == null || e.job == only) && site.remotearc.employees.Activity.needsAttention(plugin, e)) trouble.add(e);
+        for (int i = 0; i < trouble.size(); i += 8) lines.add(new Line(null, i == 0, trouble.subList(i, Math.min(trouble.size(), i + 8))));
         for (JobType t : JobType.values()) {
             if (only != null && t != only) continue;
             List<Employee> of = new ArrayList<>();
@@ -71,12 +75,14 @@ public final class EmployeeListMenu extends Menu {
         for (int r = 0; r < ROWS && pg * ROWS + r < lines.size(); r++) {
             Line line = lines.get(pg * ROWS + r);
             JobType t = line.job();
-            if (line.first()) {
+            if (t == null) {
+                button(r * 9, glow(icon(Material.BELL, line.first() ? "<red>Needs attention" : "<red>Needs attention (more)", List.of(
+                        "<gray>Hungry, stuck, or unhappy without", "<gray>a home. Hover one to see why;", "<gray>click to sort it out."))), null);
+            } else if (line.first()) {
                 List<String> lore = new ArrayList<>(wrap("<gray>", t.description(), 36));
                 lore.add("");
                 long n = all.stream().filter(e -> e.job == t).count();
-                lore.add("<white>" + n + "</white> <gray>employed · hire " + Msg.money(plugin.settings().job(t).hireCost())
-                        + ", wage " + Describe.wageLine(plugin, t));
+                lore.add("<white>" + n + "</white> <gray>employed");
                 lore.add("");
                 lore.add(only == null ? "<yellow>Click to show only " + t.display().toLowerCase() + "s" : "<yellow>Click to show every job");
                 ItemStack label = icon(t.icon(), "<gold>" + t.display() + "s", lore);
@@ -89,13 +95,13 @@ public final class EmployeeListMenu extends Menu {
                 // Kept short so it doesn't cover the rest of the menu; the full details are one click away.
                 List<String> lore = new ArrayList<>();
                 if (owner == null) lore.add("<gray>Employer: <white>" + e.ownerName());
-                String status = e.status.length() > 44 ? e.status.substring(0, 43) + "…" : e.status;
-                lore.add((e.onStrike ? "<red>" : e.paused ? "<gray>" : "<white>") + Describe.esc(status));
+                lore.add(site.remotearc.employees.Activity.mini(plugin, e));
                 String detail = e.worker == null ? null : e.worker.detail();
                 if (detail != null) lore.add("<gray>" + Describe.esc(detail.length() > 44 ? detail.substring(0, 43) + "…" : detail));
-                lore.add("<yellow>Click to manage");
+                if (site.remotearc.employees.Food.enabled(plugin)) lore.add(Describe.foodLine(plugin, e));
+                lore.add("<yellow>Click to see " + e.name);
                 button(r * 9 + 1 + i, head(e, "<gold>" + e.name + " <gray>(" + e.job.display() + ")", lore),
-                        (p, click) -> new EmployeeMenu(plugin, e, this).open(p));
+                        (p, click) -> EmployeeCard.show(plugin, p, e));
             }
         }
         if (all.isEmpty()) {
@@ -151,7 +157,7 @@ public final class EmployeeListMenu extends Menu {
         button(49, glow(icon(Material.EMERALD, "<green>Hire someone", plugin.settings().villagersOnly ? List.of(
                 "<gray>Employees are hired from villagers:",
                 "<gray>shift-right-click a grown-up villager",
-                "<gray>and pick a job. Free for now.", "", "<yellow>Click to see the jobs") : List.of(
+                "<gray>and pick a job. They ask for the", "<gray>job's tools and some food.", "", "<yellow>Click to see the jobs") : List.of(
                 "<gray>Pick a job; they start work",
                 "<gray>where you're standing.", "", "<yellow>Click to choose a job"))), (p, c) -> new HireMenu(plugin, this).open(p));
         button(50, icon(Material.LEVER, "<aqua>Control panel", List.of(

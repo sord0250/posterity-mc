@@ -8,8 +8,9 @@
 A Paper plugin for hiring NPC employees who do the repetitive work on a survival server: chopping
 trees, farming, mining, quarrying, building (and repairing) schematics, smelting, ranching, guarding,
 villager trading, carrying things between chests and keeping you company as a bodyguard. They
-deliver to your VirtualChests, can sell what they make to a merchant, and are paid wages from your
-balance (Vault / EssentialsX).
+deliver to your VirtualChests, can sell what they make to a merchant, and aren't paid: they eat food
+from a pantry chest, keep a working day (work, an evening off, a night's sleep) and show what they're
+doing over their heads.
 
 Employees are **hired from the world's own villagers**: shift-right-click a grown-up villager and
 pick a job. The villager becomes the employee, standing where it stood. (Hiring villagers is free for
@@ -18,8 +19,7 @@ label. Mannequins have no AI of their own, so ArcEmployees moves them itself. Ev
 speed of a survival player with the same tool.
 
 - Server: Paper 26.2 (Java 25).
-- Optional: **Vault** and an economy (EssentialsX) for hire fees and wages (without them, hiring is
-  free and no wages are taken), **VirtualChests** (deliveries and storage), **WorldEdit** (selecting areas, reading
+- Optional: **Vault** and an economy (EssentialsX) for selling to merchants, **VirtualChests** (deliveries and storage), **WorldEdit** (selecting areas, reading
   schematics), **ArcShop** (merchant prices), **EssentialsX** (mail to offline owners),
   **CoreProtect** (logs employees' block changes).
 
@@ -33,7 +33,7 @@ speed of a survival player with the same tool.
 6. [Supplies: where materials come from](#supplies-where-materials-come-from)
 7. [Building blueprints](#building-blueprints)
 8. [Selling and the market](#selling-and-the-market)
-9. [Wages](#wages)
+9. [Food, the working day and status](#food-the-working-day-and-status)
 10. [Reports and profit](#reports-and-profit)
 11. [CoreProtect logging](#coreprotect-logging)
 12. [Control boards and the control panel](#control-boards-and-the-control-panel)
@@ -71,8 +71,15 @@ speed of a survival player with the same tool.
   with one of the game's player skins (change it in its menu, or `/emp skin`). It keeps the villager's
   name tag as its name if it had one, otherwise it gets a name from the list in `config.yml`. Its trades
   are gone: it works for you now.
-- **Cost:** none for now. No hire fee and no first wage are taken for a villager. (Wages after that follow
-  [Wages](#wages), and only with an economy plugin.)
+- **Cost:** the villager asks for the **tools of the job** (`jobs.<job>.hire-items`: an iron hoe for a
+  farmer, an iron pickaxe for a miner...) and **food** (`hiring.food`, 16 bread, plus 2 more for every
+  employee you already have, up to 64). Pick a job and a window shows the villager's offer, with a tick
+  or a cross by each thing so you see what you're missing. The tools become theirs; the food goes into
+  their food store. A kingdom's settlers are free.
+- **Reserving:** can't afford it yet? Click **Reserve for me** in that window. The villager walks to
+  its bed and waits there, standing still and unhurt, for `hiring.reserve-days` (7) real days; only you
+  can hire it meanwhile. Shift-right-click it when you're back to see the offer again (or **Let them
+  go**). Up to `hiring.max-reserved` (3) at a time.
 - **The village refills:** `villager-hiring.replenish.delay-minutes` (20) after a hire, a baby villager is
   born where it stood, so villages don't empty out. Only up to the number of villagers that were round
   that spot (`radius`, 48 blocks) before the hire, never more, and never past `max-villagers-nearby`
@@ -355,9 +362,11 @@ after it. Click a job icon to see only that job. The bottom row has:
 | Control panel | Link buttons and levers to actions |
 | Merchant prices | Today's sell prices |
 
-Clicking an employee opens their own menu: storage (open or change), backpack, work area, the job's
-own settings (filter, build, herd size, trades), no-work zones, supplies, skin, rename, pause, wages,
-teleport to them, bring them here (asks first), selling, recent problems, and fire. Closing a
+Clicking an employee opens their **card**: a window with what they're doing now, their food, home,
+mood and working day, where they work and deliver, and buttons for the everyday things (work area,
+storage, pantry, home, backpack, pause, go to them, bring them here, fire). **More settings…** opens
+their full menu: the job's own settings (filter, build, herd size, trades), no-work zones, supplies,
+skin, rename, selling, recent problems and the rest. Closing a
 backpack or chest you opened from a menu takes you back to it. Anything that needs typing (a name, a
 number, a link) is asked for in chat; type `cancel` to stop.
 
@@ -673,8 +682,7 @@ reskin them. `/emp market prices` (or the menu's Merchant prices) shows today's 
   Things ArcShop doesn't list (mob drops, wool...) have small prices in `market.prices`.
 - **Demand:** an item's price halves for every 256 of it you sell, recovering over about a day.
 - **Daily limit:** you plus your employees earn full price for the first **$300 in any 24 hours**
-  (`max-income-per-day`), **plus a day's wages for your staff** (`wages-raise-limit`), so paying
-  your employees never eats into what you can make for yourself. Past the limit, merchants still buy
+  (`max-income-per-day`). Past the limit, merchants still buy
   from *you* at **25%** of the price (`over-limit-rate`; 0 makes it a hard stop): you can always raise
   cash in a pinch, but grinding past the limit pays poorly. Employees stop selling at the limit and
   store their goods instead, so nothing gets sold off cheaply without you deciding to. A workout pays
@@ -714,37 +722,53 @@ shows what it sold in the last 24 hours, all time, and its latest sales; the
 
 ---
 
-## Wages
+## Food, the working day and status
 
-Hiring a villager is free for now. Hiring someone out of nothing (admins, or with
-`villager-hiring.villagers-only: false`) costs the job's `hire-cost` plus the first `wage`. After that the wage is taken every
-`payroll.interval-hours` of **real** time (24 by default), not per Minecraft day. If you can't pay,
-the employee goes on strike until you can (or until you click **Pay wage now**); offline owners get
-Essentials mail. Pausing an employee stops the wage clock too.
+**Food instead of wages.** Employees aren't paid. Each keeps a small food store and eats
+`food.points-per-day` (11) food points every Minecraft day: an item's food points are its nutrition
+plus saturation, as for a player, so a bread (11) is about a day and a cooked steak (20.8) nearly two.
+When the store drops under a day's worth they take enough for three days from their **pantry**: the
+chest you set with **Pantry** on their card (or `/emp pantry <name> chest` looking at it,
+`/emp pantry <name> vc <n>` for a /chest), otherwise wherever they deliver. With nothing left at all
+they eat anything edible in their backpack. Out of food, they stop and show **⚠ Too hungry to work**
+until there's food again. They never eat rotten flesh, spider eyes, golden apples and the like
+(`food.never-eat`). Paused and resting employees eat nothing. `/emp pantry <name>` shows how many
+days they have.
 
-**Nobody online:** employees rest while nobody is on the server (`payroll.rest-when-server-empty`),
+**The working day** (`schedule`): they work from 6:00 to 18:00 on the Minecraft clock, relax in the
+evening (their own pastime, a campfire, a chat, a stroll) and sleep from 21:00: in their home's bed if
+they have one and can get there, otherwise where they are. Guards and bodyguards are on duty day and
+night (`schedule.night-shift-jobs`). `schedule.enabled: false` has everyone work around the clock.
+
+**Mood:** an employee without a home is unhappy and works slower (`homes.homeless-work-speed`). The
+card shows their mood and why.
+
+**Status over their heads:** under each employee's name is one line saying what they're doing right
+now, with a symbol and a colour: ⚒ working, ☾ sleeping, ☕ relaxing, ❤ their personality got the better
+of them, ⌛ idle, ✋ paused, ⚠ trouble (hungry, chest full, stuck). "· unhappy: no home" is added while
+they're homeless. The same line heads their card, the `/emp` list (where anyone in trouble is listed
+first, under **Needs attention**) and the status board.
+
+**Nobody online:** employees rest while nobody is on the server (`rest-when-server-empty`),
 showing "Resting" until someone joins. To keep one working while everyone's away, authorize it in
 its menu (**Rests/Works while nobody's on**) or with `/emp away <name> work` (`rest` undoes it).
-No wages are taken for a pay period in which no player was on the server at all
-(`payroll.only-days-with-players`): the next day is simply free. Employees you've told to work while
-away are paid every day, since they work every day.
+It eats while it works, so keep its pantry stocked.
 
-| Job | Hire | Wage/day | Job | Hire | Wage/day |
-|---|---|---|---|---|---|
-| Lumberjack | $50 | $10 | Builder | $100 | $20 |
-| Farmer | $50 | $10 | Smelter | $60 | $10 |
-| Miner | $100 | $15 | Rancher | $60 | $10 |
-| Quarry | $100 | $15 | Guard | $80 | $12 |
-| Trader | $80 | $12 | Bodyguard | $120 | $15 |
-| Courier | $60 | $8 | | | |
+| Job | Asks for (plus food) | Job | Asks for (plus food) |
+|---|---|---|---|
+| Lumberjack | iron axe | Builder | iron pickaxe, iron shovel |
+| Farmer | iron hoe | Smelter | furnace |
+| Miner | iron pickaxe | Rancher | 2 leads, shears |
+| Quarry | iron pickaxe, iron shovel | Guard | iron sword |
+| Trader | book and quill | Bodyguard | iron sword, shield |
+| Courier | bundle | | |
 
 ---
 
 ## Managers: letting a friend run your employees
 
 `/emp trust <player>` lets a friend manage all your employees: open their menus, change work areas,
-routes, builds, selling and zones, pause, move or fire them. Wages and costs still come from your
-balance. They open your list with `/emp manage <you>` (or **Friends' employees** in their own `/emp`
+routes, builds, selling and zones, pause, move or fire them. They open your list with `/emp manage <you>` (or **Friends' employees** in their own `/emp`
 menu), and can use any of your employees' names in commands (`/emp area YourName:Ned show`, or just
 `Ned` if they have no employee called that). `/emp trust` lists who can; `/emp untrust <player>` stops it.
 
@@ -760,10 +784,9 @@ they do while nobody's on) are listed on one line. `/emp report [hours]` shows t
 (24 hours by default).
 
 **Profit per employee:** `/emp profit [days]` (7 by default) lists every employee, best first; the
-**Profit** button in an employee's menu shows its last 24 hours, 7 and 30 days; the business board
-shows the last 24 hours. Profit is
+business board shows the last 24 hours. Profit is
 
-> goods put in storage + sales − materials taken from storage − wages
+> goods put in storage + sales − materials taken from storage
 
 with every item valued at what a merchant pays for it today, so it reads the same whether an employee
 stores or sells. A courier that sells goes on the books for the stock it took from storage (already
@@ -794,8 +817,7 @@ replants in one go aren't logged (the block never really changes).
 
 ### Avatars
 Life-size stand-ins of your employees for a control room: each wears its employee's skin, holds its
-tool and shows its live status under its name (green working, grey idle, gold needs attention, red
-on strike). **Right-click** an avatar for that employee's menu; **shift-right-click** to pause or
+tool and shows its live status under its name (the same line as over the employee's head). **Right-click** an avatar for that employee's menu; **shift-right-click** to pause or
 resume them. `/emp avatar <name>` (or the armor-stand button in their menu) puts theirs where you
 stand, facing the way you face; `/emp avatars` lines up everyone in a row to your right, facing you
 (also in the control panel). `/emp avatar <name> remove`, `/emp avatars remove`.
@@ -803,7 +825,7 @@ stand, facing the way you face; `/emp avatars` lines up everyone in a row to you
 ### Boards
 Big text displays for a control room, refreshed every two seconds:
 
-- **Status board** (`/emp board`): every employee by job with a coloured dot and what they're doing,
+- **Status board** (`/emp board`): every employee by job with their status symbol and what they're doing,
   builder and quarry progress, sales today, who needs attention, and the latest problems and events.
 - **Sales board** (`/emp board sales`): today's earnings against the limit, each employee's sales
   (last 24 hours and all time), the latest sales, and real-world market moves.
@@ -811,7 +833,7 @@ Big text displays for a control room, refreshed every two seconds:
   what it sold in the last 24 hours (and the net), totals, today's top-earning items and the best
   prices right now.
 - **Employee board** (`/emp board employee <name>`, or the sign in their menu): one employee in full:
-  status, area, storage, wages, what they sell and keep, their sales and their recent events.
+  status, area, storage, what they sell and keep, their sales and their recent events.
 
 Look at a wall to put a board flat on it, its top edge at the top of the block you look at; it hangs
 down from there as it fills, so it never grows into the ceiling. Look at nothing and it stands free
@@ -953,7 +975,7 @@ BlueMap behind nginx (`deploy/map-nginx.conf`), so set that up for them.
 | `/emp roam <miner> on \| off \| back` | Miner moves on when mined out / stays / goes back to its first area |
 | `/emp avatar <name> [remove]` · `/emp avatars [remove]` | Avatars for your control room |
 | `/emp skin <name> <player> \| default [skin] [slim] \| texture <ns:path>` | Looks |
-| `/emp rename <name> <new>` · `/emp pay <name>` · `/emp fire <name>` | |
+| `/emp rename <name> <new>` · `/emp pantry <name> [chest | vc <n> | storage]` · `/emp fire <name>` | |
 | `/emp all` · `/emp reload` | Admin: everyone's employees · reload config.yml |
 | `/emp config <setting> [value]` | Admin: see or change any config.yml setting in game (saved and applied at once; tab completes the names) |
 
@@ -975,11 +997,13 @@ existing file automatically on startup. The main knobs:
 | `villager-hiring.replenish.enabled`, `delay-minutes`, `radius`, `max-villagers-nearby` | true, 20, 48, 30 | Baby villagers replacing hired ones |
 | `keep-work-sites-loaded` | true | Chunk tickets on work areas |
 | `walk-speed` | 0.2 | Blocks per tick (a player walks ~0.216) |
-| `payroll.interval-hours` | 24 | Real hours between wages |
-| `payroll.rest-when-server-empty` | true | Employees rest while nobody's online (unless told to work away) |
-| `payroll.only-days-with-players` | true | No wage for a day nobody was online |
+| `rest-when-server-empty` | true | Employees rest while nobody's online (unless told to work away) |
+| `food.points-per-day`, `top-up-below-days`, `top-up-to-days`, `never-eat` | 11, 1, 3, rotten flesh... | See [Food](#food-the-working-day-and-status) |
+| `hiring.food`, `food-amount`, `food-extra-per-employee`, `food-max` | BREAD, 16, 2, 64 | Food a villager asks for to be hired |
+| `hiring.reserve-days`, `max-reserved` | 7, 3 | Reserving villagers you can't hire yet |
+| `schedule.enabled`, `work-start`, `work-end`, `sleep-start`, `night-shift-jobs` | true, 6, 18, 21, guard and bodyguard | The working day (Minecraft clock hours) |
 | `jobs.trader.never-craft-with` | diamonds, netherite... | What new traders never craft with |
-| `jobs.<job>.hire-cost`, `wage`, `tool`, `work-speed` | | Per job; `work-speed: 2.0` is twice a player |
+| `jobs.<job>.hire-items`, `tool`, `work-speed` | | Per job; `hire-items` is what a villager asks for (`[IRON_HOE]`, `[LEAD 2, SHEARS]`); `work-speed: 2.0` is twice a player |
 | `jobs.<job>.area-radius`, `area-below`, `area-above`, `max-area-size`, `max-area-height` | | Hiring area and limits |
 | `jobs.lumberjack.auto-plant`, `spacing`, `row-spacing`, `reserve` | true, 3, 5, 64 | |
 | `jobs.miner.targets`, `x-ray`, `keep-tunnel-blocks` | ores, false, false | |
@@ -989,7 +1013,7 @@ existing file automatically on startup. The main knobs:
 | `jobs.rancher.herd-size`, `animals` | 10, farm animals | |
 | `jobs.guard.ignore` | endermen, piglins... | |
 | `market.sell-ratio`, `demand`, `demand-recovery-hours`, `max-income-per-day`, `sell-anywhere`, `merchants-only` | 0.25, 256, 24, 300, false, true | |
-| `market.over-limit-rate`, `wages-raise-limit` | 0.25, true | Players past the limit get this share; the limit grows by a day's wages |
+| `market.over-limit-rate` | 0.25 | Players past the limit get this share |
 | `jobs.builder.repair-check-seconds` | 60 | How often repair mode looks a build over |
 | `jobs.courier.walk-distance` | 64 | Farther chests are reached by a shortcut |
 | `jobs.guard.take-damage`, `knockout-seconds` | true, 60 | Mobs can hurt guards and bodyguards; down this long when knocked out |
@@ -1003,7 +1027,7 @@ existing file automatically on startup. The main knobs:
 
 Data files next to it: `employees.yml` (employees, written atomically), `boards.yml`, `links.yml`,
 `market.yml` (merchants and sales history), `chests.yml` (moved chest groups), `avatars.yml`,
-`zones.yml` (zone presets), `activity.yml` (when a player was last online, for wages),
+`zones.yml` (zone presets), `activity.yml` (when a player was last online),
 `ledger.yml` (each employee's books for 30 days, and the away tallies), `managers.yml` (who may
 manage whose employees), `villager-hiring.yml` (villages waiting for a replacement baby), `blueprints/`.
 
@@ -1055,9 +1079,10 @@ folder and restart the server (don't use `/reload`). Config-only changes need ju
 - `board/`: status and sales boards (`ControlBoards`), avatars (`Avatars`), the problem/event log
   (`EventLog`), buttons and levers (`Links`).
 - `gui/`: every menu; `Menu` is the base (clicks cancelled, redrawn each second).
-- `EmployeeManager`: entities, chunk tickets, payroll, hiring, save/load (`EmployeeStore`).
+- `EmployeeManager`: entities, chunk tickets, hiring, save/load (`EmployeeStore`). `Food` (eating and
+  pantries), `Schedule` (the working day), `Activity` (the status line), `HireCost` (what a hire asks for).
 - `VillagerHiring`: shift-right-click on villagers, who may be hired, turning a villager into an
   employee (and back when fired), and the replacement babies; `gui/HireMenu` is its job picker.
-- `Ledger`: hourly books per employee (goods stored, sales, materials, wages, activity), and the
+- `Ledger`: hourly books per employee (goods stored, sales, materials, activity), and the
   away tallies; `Reports` turns them into the join report, `/emp report` and `/emp profit`.
 - `util/BlockLog`: CoreProtect logging, by reflection (nothing happens without CoreProtect).

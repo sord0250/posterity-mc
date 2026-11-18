@@ -47,11 +47,14 @@ public final class Employee {
     public boolean worksAway;
     /** Log every task it finishes, and why it idles, to the server console (/employees debug); kept over restarts. */
     public boolean debug;
-    /** Wages are paid up to this time (epoch millis). */
-    public long paidUntil;
-    /** While paused, the unused part of the current pay period. */
-    public long pausedRemaining;
-    public boolean onStrike;
+    /**
+     * Its food store, in food points (an item's nutrition plus saturation; see
+     * Food). Eaten as it goes; topped up from its pantry. At 0 it's too hungry
+     * to work.
+     */
+    public double food = 33;
+    /** Where it gets its food: a chest, a /chest, or NONE for wherever it delivers to. */
+    public StorageTarget pantry = StorageTarget.NONE;
     public long hiredAt;
     /** The villager type (its biome look, e.g. minecraft:plains) when it was hired from a villager; null if it wasn't. */
     public String villagerType;
@@ -387,7 +390,6 @@ public final class Employee {
         public long tradesMade;
         public long itemsSold;
         public long itemsDelivered;
-        public double wagesPaid;
         /** Courier: items carried from one chest to another. */
         public long itemsMoved;
         /** Builder: blocks put back by repair mode. */

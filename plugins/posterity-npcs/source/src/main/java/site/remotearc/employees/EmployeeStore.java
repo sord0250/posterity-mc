@@ -128,10 +128,9 @@ final class EmployeeStore {
                 e.homeSite = null;
             }
         }
-        e.paidUntil = s.getLong("paid-until");
-        e.pausedRemaining = s.getLong("paused-remaining");
         e.paused = s.getBoolean("paused");
-        e.onStrike = s.getBoolean("on-strike");
+        e.food = Math.max(0, s.getDouble("food", 33));   // from before food: a few days' worth to start with
+        if (s.isConfigurationSection("pantry")) e.pantry = StorageTarget.load(s.getConfigurationSection("pantry"));
         e.skin = Skin.load(s.getConfigurationSection("skin"), random);
         e.area = WorkArea.load(s.getConfigurationSection("area"));
         e.home = readLocation(s.getString("home"));
@@ -161,7 +160,6 @@ final class EmployeeStore {
             e.stats.blocksRepaired = st.getLong("blocks-repaired");
             e.stats.itemsSold = st.getLong("items-sold");
             e.stats.itemsDelivered = st.getLong("items-delivered");
-            e.stats.wagesPaid = st.getDouble("wages-paid");
         }
         for (String spot : s.getStringList("spots")) {
             int colon = spot.lastIndexOf(':');
@@ -307,10 +305,9 @@ final class EmployeeStore {
                 if (e.selfBuild) s.set("home-self-build", true);
                 if (e.siteArea != null) e.siteArea.save(s.createSection("home-site-area"));
             }
-            s.set("paid-until", e.paidUntil);
-            s.set("paused-remaining", e.pausedRemaining);
             s.set("paused", e.paused);
-            s.set("on-strike", e.onStrike);
+            s.set("food", Math.round(e.food * 100) / 100.0);
+            if (e.pantry.kind() != StorageTarget.Kind.NONE) e.pantry.save(s.createSection("pantry"));
             e.skin.save(s.createSection("skin"));
             if (e.area != null) e.area.save(s.createSection("area"));
             s.set("home", writeLocation(e.home));
@@ -335,7 +332,6 @@ final class EmployeeStore {
             if (e.stats.blocksRepaired > 0) st.set("blocks-repaired", e.stats.blocksRepaired);
             st.set("items-sold", e.stats.itemsSold);
             st.set("items-delivered", e.stats.itemsDelivered);
-            st.set("wages-paid", e.stats.wagesPaid);
             List<String> spots = new ArrayList<>(e.spots.size());
             for (Map.Entry<BlockPos, Material> spot : e.spots.entrySet()) spots.add(spot.getKey() + ":" + spot.getValue().name());
             s.set("spots", spots);

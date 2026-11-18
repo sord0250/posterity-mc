@@ -16,7 +16,7 @@ import site.remotearc.employees.util.Msg;
 /**
  * ArcEmployees: hire NPC workers (skinned Mannequins) who farm, run tree
  * farms, mine, quarry, build schematics, smelt and ranch, deliver to
- * VirtualChests, and are paid wages through Vault.
+ * VirtualChests, and eat from a pantry instead of drawing wages.
  */
 public final class ArcEmployees extends JavaPlugin {
 
@@ -53,7 +53,7 @@ public final class ArcEmployees extends JavaPlugin {
         settings = new Settings(getConfig(), getLogger());
         Msg.setCurrency(settings.currency);
 
-        // Vault is optional: without it (or without an economy plugin) hiring is free and no wages are taken.
+        // Vault is optional: without it (or without an economy plugin) merchants can't buy or sell for money.
         try {
             RegisteredServiceProvider<Economy> rsp = getServer().getServicesManager().getRegistration(Economy.class);
             economy = rsp == null ? null : rsp.getProvider();
@@ -61,7 +61,7 @@ public final class ArcEmployees extends JavaPlugin {
             economy = null;
         }
         if (economy == null) {
-            getLogger().warning("No Vault economy provider: hiring is free and wages are not charged.");
+            getLogger().warning("No Vault economy provider: merchants can't buy or sell for money.");
         }
 
         vchests = new VirtualChestsBridge(getLogger());

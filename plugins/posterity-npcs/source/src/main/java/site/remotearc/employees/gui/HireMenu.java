@@ -4,6 +4,7 @@ import net.kyori.adventure.text.Component;
 import org.bukkit.Material;
 import org.bukkit.entity.Villager;
 import site.remotearc.employees.ArcEmployees;
+import site.remotearc.employees.HireCost;
 import site.remotearc.employees.Settings;
 import site.remotearc.employees.job.JobType;
 import site.remotearc.employees.util.Msg;
@@ -13,10 +14,11 @@ import java.util.List;
 import java.util.Locale;
 
 /**
- * Pick a job to hire for; hover a job for what it does and what it costs.
+ * Pick a job to hire for; hover a job for what it does and what it asks for
+ * (the tools of the trade and some food, see HireCost).
  *
- * Opened on a villager (shift-right-click one), each job is a button that hires
- * that villager for it, free. Opened from /employees, it hires someone where
+ * Opened on a villager (shift-right-click one), each job opens the villager's
+ * offer (HireDialog): hire, or reserve it. Opened from /employees, it hires someone where
  * you stand, unless employees come only from villagers (villager-hiring.villagers-only),
  * when it tells you to go and find a villager instead (admins can still hire here).
  */
@@ -41,6 +43,14 @@ public final class HireMenu extends Menu {
         return new HireMenu(plugin, null, v);
     }
 
+    /** Who's looking: the food asked for grows with how many employees they have. */
+    private java.util.UUID viewer = new java.util.UUID(0, 0);
+
+    @Override
+    public void openFor(org.bukkit.entity.Player p) {
+        viewer = p.getUniqueId();
+    }
+
     @Override
     protected void draw() {
         for (int s = 0; s < 36; s++) button(s, filler(), null);
@@ -48,31 +58,27 @@ public final class HireMenu extends Menu {
             button(4, icon(Material.VILLAGER_SPAWN_EGG, "<green>" + villagerLabel(villager), List.of(
                     "<gray>Pick a job below and this villager", "<gray>becomes your employee: it takes on",
                     "<gray>a player's look and works here.", "",
-                    "<gray>Hiring a villager is <white>free</white> for now.")), null);
+                    plugin.villagerHiring().isSettler(villager) ? "<gray>Your settler works for <white>free</white>."
+                            : "<gray>It asks for the <white>tools</white> of the job", plugin.villagerHiring().isSettler(villager) ? ""
+                            : "<gray>and some <white>food</white> to start with.")), null);
         }
         int[] slots = {10, 11, 12, 13, 14, 15, 16, 19, 20, 21, 22, 23, 24, 25};
         int k = 0;
         for (JobType t : JobType.values()) {
             if (k >= slots.length) break;
             int slot = slots[k++];
-            Settings.JobSettings js = plugin.settings().job(t);
-            double cost = js.hireCost() + js.wage();
+            java.util.Map<Material, Integer> cost = HireCost.of(plugin, viewer, t);
             List<String> lore = new ArrayList<>(wrap("<gray>", t.description(), 36));
             lore.add("");
             if (villager != null) {
-                lore.add("<gray>Hire: <white>free");
-                lore.add("<gray>Wage: <white>" + Describe.wageLine(plugin, t));
+                boolean free = plugin.villagerHiring().isSettler(villager);
+                lore.addAll(wrap("<gray>", "Asks for: " + (free ? "nothing (a settler)" : HireCost.describe(cost)), 36));
                 lore.add("");
-                lore.add("<yellow>Click to hire this villager as a " + t.display().toLowerCase(Locale.ROOT));
-                button(slot, icon(t.icon(), "<gold>" + t.display(), lore), (p, c) -> new ConfirmMenu(plugin,
-                        "Hire it as a " + t.display().toLowerCase(Locale.ROOT) + "?", "<green>Hire (free)", pl -> {
-                    pl.closeInventory();
-                    plugin.villagerHiring().hire(pl, villager, t, null);
-                }, this::open).open(p));
+                lore.add("<yellow>Click to hear the villager's offer");
+                button(slot, icon(t.icon(), "<gold>" + t.display(), lore), (p, c) -> HireDialog.show(plugin, p, villager, t));
                 continue;
             }
-            lore.add("<gray>Hire: <white>" + Msg.money(js.hireCost()) + "</white> + first wage <white>" + Msg.money(js.wage()));
-            lore.add("<gray>Wage: <white>" + Describe.wageLine(plugin, t));
+            lore.addAll(wrap("<gray>", "Asks for: " + HireCost.describe(cost), 36));
             lore.add("");
             if (plugin.settings().villagersOnly) {
                 lore.add("<yellow>Shift-right-click a grown-up villager");
@@ -85,7 +91,7 @@ public final class HireMenu extends Menu {
                         return;
                     }
                     new ConfirmMenu(plugin, "Hire a " + t.display().toLowerCase(Locale.ROOT) + " here?",
-                            "<green>Hire for " + Msg.money(cost) + " (admin)", pl -> {
+                            "<green>Hire here (admin, free)", pl -> {
                         pl.closeInventory();
                         run(pl, "hire " + t.key());
                     }, this::open).open(p);
@@ -94,7 +100,7 @@ public final class HireMenu extends Menu {
             }
             lore.add("<yellow>Click to hire one where you stand");
             button(slot, icon(t.icon(), "<gold>" + t.display(), lore), (p, c) -> new ConfirmMenu(plugin,
-                    "Hire a " + t.display().toLowerCase() + "?", "<green>Hire for " + Msg.money(cost), pl -> {
+                    "Hire a " + t.display().toLowerCase() + "?", "<green>Hire for " + HireCost.describe(cost), pl -> {
                 pl.closeInventory();
                 run(pl, "hire " + t.key());
             }, this::open).open(p));

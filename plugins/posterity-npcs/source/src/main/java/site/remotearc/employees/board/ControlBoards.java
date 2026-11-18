@@ -241,18 +241,19 @@ public final class ControlBoards {
     /** chars: about how many characters fit on one line of this board. */
     private Component render(UUID owner, int chars) {
         List<Employee> mine = plugin.manager().ownedBy(owner);
-        int working = 0;
+        int working = 0, off = 0;
         List<String> attention = new ArrayList<>();
         for (Employee e : mine) {
             Worker.State s = e.worker == null ? null : e.worker.state();
             if (s == Worker.State.WORKING) working++;
-            if (s == Worker.State.FULL || s == Worker.State.STRIKE || EventLog.isProblem(e.status)) attention.add(e.name);
+            if (s == Worker.State.OFF_DUTY) off++;
+            if (s == Worker.State.FULL || s == Worker.State.HUNGRY || EventLog.isProblem(e.status)) attention.add(e.name);
         }
         int problems = attention.size();
         String ownerName = Bukkit.getOfflinePlayer(owner).getName();
         TextComponent.Builder out = Component.text();
         out.append(Component.text("⚒ " + (ownerName == null ? "Your" : ownerName + "'s") + " employees", NamedTextColor.GOLD, TextDecoration.BOLD));
-        out.append(Component.text("   " + working + " working · " + (mine.size() - working) + " idle", NamedTextColor.GRAY));
+        out.append(Component.text("   " + working + " working · " + off + " off duty · " + (mine.size() - working - off) + " idle", NamedTextColor.GRAY));
         if (plugin.market() != null && plugin.market().hasMerchants()) {
             double cap = plugin.market().limit(owner);
             out.append(Component.text("   Sales today " + site.remotearc.employees.util.Msg.money(plugin.market().earnedToday(owner))
@@ -267,18 +268,17 @@ public final class ControlBoards {
             out.append(Component.newline()).append(Component.text(job.display() + "s", NamedTextColor.AQUA, TextDecoration.UNDERLINED));
             for (Employee e : list) {
                 Worker.State s = e.worker == null ? null : e.worker.state();
-                NamedTextColor dot = s == null ? NamedTextColor.DARK_GRAY : switch (s) {
-                    case WORKING -> NamedTextColor.GREEN;
-                    case IDLE -> NamedTextColor.GRAY;
-                    case FULL -> NamedTextColor.YELLOW;
-                    case PAUSED, RESTING -> NamedTextColor.DARK_GRAY;
-                    case STRIKE -> NamedTextColor.RED;
-                };
-                boolean problem = EventLog.isProblem(e.status) || s == Worker.State.FULL || s == Worker.State.STRIKE;
+                site.remotearc.employees.Activity.Kind kind = site.remotearc.employees.Activity.kind(e);
                 out.append(Component.newline())
-                        .append(Component.text(" ● ", dot))
+                        .append(Component.text(" " + kind.symbol + " ", kind.color))
                         .append(Component.text(e.name, NamedTextColor.WHITE))
-                        .append(Component.text("  " + cut(e.status, chars - e.name.length() - 5), problem ? NamedTextColor.GOLD : NamedTextColor.GRAY));
+                        .append(Component.text("  " + cut(site.remotearc.employees.Activity.text(e), chars - e.name.length() - 5),
+                                kind == site.remotearc.employees.Activity.Kind.PROBLEM ? NamedTextColor.GOLD : NamedTextColor.GRAY));
+                if (plugin.manager().homeless(e)) out.append(Component.text("  · no home", NamedTextColor.GOLD));
+                if (site.remotearc.employees.Food.enabled(plugin) && e.food > 0
+                        && site.remotearc.employees.Food.days(plugin, e.food + site.remotearc.employees.Food.inPantry(plugin, e)) < 1) {
+                    out.append(Component.text("  · food runs out today", NamedTextColor.GOLD));
+                }
                 double[] sold = e.soldToday();
                 if (sold[1] > 0) out.append(Component.text("  · sold " + (long) sold[0] + " for "
                         + site.remotearc.employees.util.Msg.money(sold[1]) + " today", NamedTextColor.GREEN));
@@ -411,9 +411,8 @@ public final class ControlBoards {
         out.append(Component.text("$ " + (ownerName == null ? "Your" : ownerName + "'s") + " business", NamedTextColor.GOLD, TextDecoration.BOLD));
         var econ = plugin.economy();
         if (econ != null) out.append(Component.text("   Balance " + money(econ.getBalance(Bukkit.getOfflinePlayer(owner))), NamedTextColor.WHITE));
-        double perDay = 24.0 / (plugin.settings().payIntervalMillis / 3_600_000.0);
-        double wages = 0, earned = 0;
-        out.append(Component.newline()).append(Component.text("Last 24h: goods stored · sales · taken from storage · wages = profit", NamedTextColor.AQUA, TextDecoration.UNDERLINED));
+        double earned = 0;
+        out.append(Component.newline()).append(Component.text("Last 24h: goods stored · sales · taken from storage = profit", NamedTextColor.AQUA, TextDecoration.UNDERLINED));
         List<Employee> mine = new ArrayList<>(plugin.manager().ownedBy(owner));
         Map<UUID, site.remotearc.employees.Ledger.Bucket> books = new java.util.HashMap<>();
         for (Employee e : mine) books.put(e.id, plugin.ledger().last(e.id, 86_400_000L));
@@ -421,7 +420,6 @@ public final class ControlBoards {
         double profit = 0;
         for (Employee e : mine) {
             var b = books.get(e.id);
-            wages += e.paused ? 0 : plugin.settings().job(e.job).wage() * perDay;
             earned += e.soldToday()[1];
             double net = b.profit();
             profit += net;
@@ -432,7 +430,7 @@ public final class ControlBoards {
                     .append(Component.text("  " + money(b.stored), NamedTextColor.WHITE))
                     .append(Component.text("  +" + money(b.sales), NamedTextColor.GREEN))
                     .append(Component.text(b.taken > 0 ? "  -" + money(b.taken) : "", NamedTextColor.GOLD))
-                    .append(Component.text("  -" + money(b.wages), NamedTextColor.RED))
+                    .append(Component.text(b.wages > 0 ? "  -" + money(b.wages) : "", NamedTextColor.RED))
                     .append(Component.text("  = " + (net >= 0 ? "+" : "-") + money(Math.abs(net)),
                             net >= 0 ? NamedTextColor.GREEN : expected ? NamedTextColor.GRAY : NamedTextColor.RED))
                     .append(Component.text(e.paused ? "  (paused)" : e.job == JobType.COURIER && b.sales > 0 ? "  (sold others' goods)"
@@ -441,7 +439,7 @@ public final class ControlBoards {
         }
         double you = Math.max(0, market.earnedToday(owner) - earned);
         out.append(Component.newline()).append(Component.text("Totals", NamedTextColor.AQUA, TextDecoration.UNDERLINED));
-        out.append(Component.newline()).append(Component.text(" Wages " + money(wages) + "/day · employee sales " + money(earned)
+        out.append(Component.newline()).append(Component.text(" Employee sales " + money(earned)
                 + " · your own sales " + money(you), NamedTextColor.WHITE));
         double net = profit + you;
         out.append(Component.newline()).append(Component.text(" Profit " + (net >= 0 ? "+" : "-") + money(Math.abs(net)) + " in the last 24h"

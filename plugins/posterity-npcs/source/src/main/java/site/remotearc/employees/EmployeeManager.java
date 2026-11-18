@@ -43,7 +43,7 @@ import java.util.regex.Pattern;
 
 /**
  * Owns every employee: spawns and moves their Mannequins, ticks their workers,
- * keeps their work sites loaded, runs payroll and saves to disk.
+ * keeps their work sites loaded and saves to disk.
  */
 public final class EmployeeManager {
 
@@ -124,7 +124,9 @@ public final class EmployeeManager {
         }
         refreshTickets();
         tasks.add(Bukkit.getScheduler().runTaskTimer(plugin, this::tick, 1L, 1L));
-        tasks.add(Bukkit.getScheduler().runTaskTimer(plugin, this::payroll, 100L, 20L * 30));
+        tasks.add(Bukkit.getScheduler().runTaskTimer(plugin, () -> {
+            if (!Bukkit.getOnlinePlayers().isEmpty()) playerSeen();
+        }, 100L, 20L * 30));
         tasks.add(Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             if (dirty) save();
         }, 20L * 30, 20L * 30));
@@ -158,8 +160,7 @@ public final class EmployeeManager {
 
     /**
      * Resting: nobody is on the server and the owner hasn't told this one to
-     * work while everyone's away. It does nothing, and isn't paid for days
-     * when nobody came on (see payroll).
+     * work while everyone's away. It does nothing (and eats nothing).
      */
     public boolean resting(Employee e) {
         return empty && !e.worksAway && plugin.settings().restWhenEmpty;
@@ -207,6 +208,7 @@ public final class EmployeeManager {
     }
 
     private void spawn(Employee e) {
+        lastLine.remove(e.id);   // a new entity: its line has to be put up again
         Mannequin m = e.location.getWorld().spawn(e.location, Mannequin.class, mm -> {
             mm.setPersistent(false);   // never saved with the chunk: we respawn it from employees.yml
             mm.setRemoveWhenFarAway(false);
@@ -247,22 +249,22 @@ public final class EmployeeManager {
         if (isEmployeeEntity(entity) && byEntity(entity) == null) entity.remove();
     }
 
+    /** The line last put over each employee's head, so it's only sent when it changes. */
+    private final Map<UUID, Component> lastLine = new HashMap<>();
+
     public void updateLabel(Employee e) {
         if (e.isLoaded()) applyLabel(e, e.entity);
     }
 
+    /**
+     * Its name and job over its head, and under that what it's doing right now
+     * (see Activity): "⚒ Harvesting wheat", "☾ Sleeping in bed", "⚠ Too hungry to work".
+     */
     private void applyLabel(Employee e, Mannequin m) {
-        m.customName(Component.text(e.name, NamedTextColor.GOLD));
-        Worker.State s = e.worker == null ? null : e.worker.state();
-        String base = e.ownerName() + "'s " + e.job.display();
-        Component desc;
-        if (s == Worker.State.STRIKE) desc = Component.text(base + " · on strike", NamedTextColor.RED);
-        else if (s == Worker.State.PAUSED) desc = Component.text(base + " · paused", NamedTextColor.GRAY);
-        else if (s == Worker.State.RESTING) desc = Component.text(base + " · resting", NamedTextColor.GRAY);
-        else if (s == Worker.State.FULL) desc = Component.text(base + " · storage full", NamedTextColor.YELLOW);
-        else if (homeless(e)) desc = Component.text(base + " · homeless", NamedTextColor.GOLD);
-        else desc = Component.text(base, NamedTextColor.AQUA);
-        m.setDescription(desc);
+        Component name = Component.text(e.name, NamedTextColor.GOLD).append(Component.text(" · " + e.job.display(), NamedTextColor.GRAY));
+        if (!name.equals(m.customName())) m.customName(name);
+        Component desc = Activity.line(plugin, e);
+        if (!desc.equals(lastLine.put(e.id, desc))) m.setDescription(desc);
     }
 
     public void applySkin(Employee e) {
@@ -424,7 +426,7 @@ public final class EmployeeManager {
         e.skin = Skin.random(random);
         e.personality = Personality.random(random);
         e.hiredAt = System.currentTimeMillis();
-        e.paidUntil = e.hiredAt + plugin.settings().payIntervalMillis;
+        e.food = plugin.settings().foodTopUpDays * plugin.settings().foodPerDay;   // turns up having eaten
         Location feet = standingSpot(at);
         e.home = feet.clone();
         e.location = feet.clone();
@@ -664,16 +666,16 @@ public final class EmployeeManager {
         markDirty();
     }
 
+    /** Where it gets its food; NONE = wherever it delivers. */
+    public void setPantry(Employee e, StorageTarget target) {
+        e.pantry = target;
+        refreshTickets();
+        markDirty();
+    }
+
     public void setPaused(Employee e, boolean paused) {
         if (e.paused == paused) return;
-        long now = System.currentTimeMillis();
-        if (paused) {
-            e.pausedRemaining = Math.max(0, e.paidUntil - now);
-            e.worker.interrupt();
-        } else {
-            e.paidUntil = now + e.pausedRemaining;
-            e.pausedRemaining = 0;
-        }
+        if (paused) e.worker.interrupt();
         e.paused = paused;
         updateLabel(e);
         markDirty();
@@ -720,6 +722,10 @@ public final class EmployeeManager {
                 if (e.storage.kind() == StorageTarget.Kind.CHEST) {
                     add(want, e.storage.world(), e.storage.pos().x() >> 4, e.storage.pos().z() >> 4);
                 }
+                if (e.pantry.kind() == StorageTarget.Kind.CHEST) {
+                    add(want, e.pantry.world(), e.pantry.pos().x() >> 4, e.pantry.pos().z() >> 4);
+                }
+                if (e.house != null) add(want, e.house.world, e.house.bed.x() >> 4, e.house.bed.z() >> 4);   // it goes home to sleep
                 for (StorageTarget t : e.supply) {
                     if (t.kind() == StorageTarget.Kind.CHEST) add(want, t.world(), t.pos().x() >> 4, t.pos().z() >> 4);
                 }
@@ -785,31 +791,7 @@ public final class EmployeeManager {
         return new Location(w, cx + 0.5, top + 1, cz + 0.5);
     }
 
-    // ── payroll ───────────────────────────────────────────────────────────
-
-    private void payroll() {
-        long now = System.currentTimeMillis();
-        if (!Bukkit.getOnlinePlayers().isEmpty()) playerSeen();
-        long interval = plugin.settings().payIntervalMillis;
-        for (Employee e : employees.values()) {
-            if (e.paused || now < e.paidUntil) continue;
-            // Nobody online all the pay period that just ended: the next one is on the house.
-            if (plugin.settings().payOnlyDaysWithPlayers && !e.worksAway && !e.onStrike && lastPlayerOnline < e.paidUntil - interval) {
-                e.paidUntil = e.paidUntil + interval > now ? e.paidUntil + interval : now + interval;
-                events.add(e.owner, e.name, "No wage: nobody was on the server for a whole day", false);
-                markDirty();
-                continue;
-            }
-            payWage(e, false);
-        }
-    }
-
-    /** What an owner's employees cost in wages per 24 hours (paused ones aren't paid). */
-    public double dailyWages(UUID owner) {
-        double perDay = 86_400_000.0 / plugin.settings().payIntervalMillis, sum = 0;
-        for (Employee e : ownedBy(owner)) if (!e.paused) sum += plugin.settings().job(e.job).wage() * perDay;
-        return sum;
-    }
+    // ── activity ──────────────────────────────────────────────────────────
 
     /** When a player was last on the server (epoch millis), kept in activity.yml across restarts. */
     private long lastPlayerOnline = -1;
@@ -841,43 +823,6 @@ public final class EmployeeManager {
         } catch (java.io.IOException ex) {
             plugin.getLogger().log(Level.WARNING, "Could not save activity.yml", ex);
         }
-    }
-
-    /**
-     * Pays one pay period's wage from the owner's balance. On failure the
-     * employee goes on strike until a later attempt succeeds.
-     */
-    public boolean payWage(Employee e, boolean manual) {
-        double wage = plugin.settings().job(e.job).wage();
-        long now = System.currentTimeMillis();
-        long interval = plugin.settings().payIntervalMillis;
-        Economy econ = plugin.economy();
-        if (wage > 0 && econ != null) {
-            OfflinePlayer owner = e.ownerPlayer();
-            EconomyResponse r = econ.has(owner, wage) ? econ.withdrawPlayer(owner, wage) : null;
-            if (r == null || !r.transactionSuccess()) {
-                if (!e.onStrike) {
-                    e.onStrike = true;
-                    e.worker.interrupt();
-                    notifyOwner(e, "<red>" + e.name + " (" + e.job.display() + ") went on strike: you couldn't pay their "
-                            + Msg.money(wage) + " wage. They go back to work as soon as you can.", true);
-                    markDirty();
-                }
-                return false;
-            }
-            e.stats.wagesPaid += wage;
-            plugin.ledger().wage(e, wage);
-        }
-        // Carry on from the old period end, unless it lapsed (strike, downtime): no back pay.
-        e.paidUntil = e.paidUntil + interval > now ? e.paidUntil + interval : now + interval;
-        if (e.onStrike) {
-            e.onStrike = false;
-            notifyOwner(e, "<green>Paid " + e.name + " " + Msg.money(wage) + ". They're back to work.", false);
-        } else if (wage > 0 && !manual) {
-            notifyOwner(e, "<gray>Paid " + e.name + " (" + e.job.display() + ") " + Msg.money(wage) + " in wages.", false);
-        }
-        markDirty();
-        return true;
     }
 
     /** Tells the owner something: in chat if online, otherwise (optionally) by Essentials mail. */

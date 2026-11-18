@@ -40,7 +40,7 @@ final class EmployeesCommand implements TabExecutor {
 
     private static final Pattern MC_NAME = Pattern.compile("[A-Za-z0-9_]{3,16}");
     private static final List<String> SUBS = List.of("plan", "help", "hire", "list", "info", "fire", "rename", "skin", "area",
-            "storage", "pause", "resume", "move", "tp", "pay", "jobs", "filter", "supply", "herd", "build", "blueprints", "board", "chests",
+            "storage", "pantry", "pause", "resume", "move", "tp", "jobs", "filter", "supply", "herd", "build", "blueprints", "board", "chests",
 "sell", "market", "zone", "toggle", "follow", "stay", "roam", "avatar", "avatars", "trades", "craft", "presets", "away", "report", "profit", "route", "repair", "trust", "untrust", "manage", "pauseall", "resumeall", "toggleall", "link", "unlink", "debug", "stalls", "house", "home", "homes");
     /** Subcommands that don't name an employee. */
     private static final List<String> GLOBAL = List.of("plan", "help", "hire", "list", "jobs", "blueprints", "board", "chests", "market",
@@ -261,7 +261,7 @@ final class EmployeesCommand implements TabExecutor {
                     case "storage" -> storage(s, e, label, args);
                     case "pause" -> {
                         mgr().setPaused(e, true);
-                        Msg.send(s, "<gray>" + e.name + " is paused. Their paid time is kept for when they resume.");
+                        Msg.send(s, "<gray>" + e.name + " is paused (and eats nothing while paused).");
                     }
                     case "resume" -> {
                         mgr().setPaused(e, false);
@@ -271,7 +271,7 @@ final class EmployeesCommand implements TabExecutor {
                     case "tp" -> {
                         if (s instanceof Player p) p.teleport(e.location.clone().add(0, 0.1, 0));
                     }
-                    case "pay" -> pay(s, e);
+                    case "pantry", "food" -> pantry(s, e, label, args);
                     case "stalls", "stall" -> jobs.stalls(s, e, label, args);
                     case "debug" -> {
                         e.debug = args.length > 2 ? args[2].equalsIgnoreCase("on") : !e.debug;
@@ -535,9 +535,10 @@ final class EmployeesCommand implements TabExecutor {
 
     private void jobs(CommandSender s) {
         for (JobType t : JobType.values()) {
-            Settings.JobSettings js = plugin.settings().job(t);
-            s.sendMessage(Msg.parse("<gold>" + t.display() + "</gold> <gray>(" + t.key() + "): hire " + Msg.money(js.hireCost())
-                    + ", wage " + Describe.wageLine(plugin, t) + "</gray>\n<dark_gray>  " + t.description()));
+            String asks = s instanceof Player p ? HireCost.describe(HireCost.of(plugin, p.getUniqueId(), t))
+                    : HireCost.describe(HireCost.of(plugin, new UUID(0, 0), t));
+            s.sendMessage(Msg.parse("<gold>" + t.display() + "</gold> <gray>(" + t.key() + "): asks for " + asks
+                    + "</gray>\n<dark_gray>  " + t.description()));
         }
     }
 
@@ -555,10 +556,10 @@ final class EmployeesCommand implements TabExecutor {
             Msg.error(p, "There is no <white><job></white> job. Jobs: " + EmployeeManager.jobKeyList(), Msg.p("job", args[1]));
             return;
         }
-        // Looking at a villager: hire that villager (free). Otherwise, with villagers-only, only admins hire out of nothing.
+        // Looking at a villager: hear its offer for that job. Otherwise, with villagers-only, only admins hire out of nothing.
         org.bukkit.entity.Villager villager = VillagerHiring.lookedAt(p);
         if (villager != null) {
-            plugin.villagerHiring().hire(p, villager, job, args.length >= 3 ? args[2] : null);
+            site.remotearc.employees.gui.HireDialog.show(plugin, p, villager, job);
             return;
         }
         if (plugin.settings().villagersOnly && !p.hasPermission("employees.admin")) {
@@ -581,25 +582,19 @@ final class EmployeesCommand implements TabExecutor {
             return;
         }
 
-        Settings.JobSettings js = plugin.settings().job(job);
-        double cost = js.hireCost() + js.wage();
-        Economy econ = plugin.economy();
-        if (econ != null && cost > 0) {
-            if (!econ.has(p, cost)) {
-                Msg.error(p, "Hiring a " + job.display().toLowerCase() + " costs " + Msg.money(cost) + " (" + Msg.money(js.hireCost())
-                        + " to hire + " + Msg.money(js.wage()) + " first wage). You have " + Msg.money(econ.getBalance(p)) + ".");
-                return;
-            }
-            if (!econ.withdrawPlayer(p, cost).transactionSuccess()) {
-                Msg.error(p, "The payment didn't go through.");
-                return;
-            }
+        // Admins hire out of nothing for free; anyone else (villagers-only off) hands over the tools and food.
+        Map<Material, Integer> cost = p.hasPermission("employees.admin") ? Map.of() : HireCost.of(plugin, p.getUniqueId(), job);
+        if (!HireCost.take(p, cost)) {
+            Msg.error(p, "Hiring a " + job.display().toLowerCase() + " takes " + HireCost.describe(cost) + "; you're missing "
+                    + HireCost.describe(HireCost.missing(p, cost)) + ".");
+            return;
         }
         Employee e = mgr().hire(p.getUniqueId(), job, name, p.getLocation());
-        e.stats.wagesPaid += js.wage();
-        plugin.ledger().wage(e, js.wage());
+        Material food = plugin.settings().hireFood;
+        if (cost.containsKey(food)) Food.store(plugin, e, food, cost.get(food));
         mgr().markDirty();
-        welcome(plugin, p, e, "<green>You hired <gold>" + e.name + "</gold> the " + job.display().toLowerCase() + " for " + Msg.money(cost) + ".");
+        welcome(plugin, p, e, "<green>You hired <gold>" + e.name + "</gold> the " + job.display().toLowerCase()
+                + (cost.isEmpty() ? "." : " for " + HireCost.describe(cost) + "."));
     }
 
     /** Tells a player who just hired an employee what it does and where things go, and outlines its work area. */
@@ -620,7 +615,8 @@ final class EmployeesCommand implements TabExecutor {
                     + "</white> (outlined now). Change it with <white>/employees area " + e.name + " worldedit</white> (your wand selection)."));
         }
         p.sendMessage(Msg.parse("<gray>" + (job.usesSupply() && job != JobType.SMELTER ? "Leftovers go" : "Harvests go") + " to <white>"
-                + e.storage.describe() + "</white>. Wage: <white>" + Describe.wageLine(plugin, job) + "</white>, paid automatically."));
+                + e.storage.describe() + "</white>. They have <white>" + Food.daysText(Food.days(plugin, e.food)) + "</white> of food; after that they"
+                + " eat from <white>" + Describe.esc(Food.pantryName(plugin, e)) + "</white>, so keep food there (or set a pantry chest in their menu)."));
         String n = e.name;
         p.sendMessage(Msg.parse(switch (job) {
             case LUMBERJACK -> "<gray>Plant saplings in the area: " + n + " fells every grown tree there, clears its leaves and replants it.";
@@ -673,7 +669,7 @@ final class EmployeesCommand implements TabExecutor {
 
     private void fire(CommandSender s, Employee e, String label, String[] args) {
         if (args.length < 3 || !args[2].equalsIgnoreCase("confirm")) {
-            Msg.send(s, "<yellow>Really fire " + e.name + "? Their backpack goes to you; paid wages aren't refunded. "
+            Msg.send(s, "<yellow>Really fire " + e.name + "? Their backpack goes to you; the tools and food you hired them with aren't given back. "
                     + "<click:run_command:'/" + label + " fire " + e.name + " confirm'><red><u>[Fire " + e.name + "]</u></red></click>");
             return;
         }
@@ -1357,13 +1353,68 @@ final class EmployeesCommand implements TabExecutor {
         }
     }
 
-    private void pay(CommandSender s, Employee e) {
-        double wage = plugin.settings().job(e.job).wage();
-        if (mgr().payWage(e, true)) {
-            Msg.send(s, "<green>Paid " + e.name + " " + Msg.money(wage) + ". Paid up for the next " + Msg.duration(e.paidUntil - System.currentTimeMillis()) + ".");
-        } else {
-            Msg.error(s, e.ownerName() + " can't afford " + Msg.money(wage) + ".");
+    /** /employees pantry <name> [chest | vc <n> | storage]: where it gets its food. */
+    private void pantry(CommandSender s, Employee e, String label, String[] args) {
+        String mode = args.length > 2 ? args[2].toLowerCase(Locale.ROOT) : "";
+        switch (mode) {
+            case "vc", "virtual", "virtualchest" -> {
+                if (!plugin.settings().vcEnabled || !plugin.vchests().available()) {
+                    Msg.error(s, "VirtualChests isn't available, so a /chest can't be a pantry.");
+                    return;
+                }
+                int n;
+                try {
+                    n = Integer.parseInt(args.length > 3 ? args[3] : "");
+                } catch (NumberFormatException ex) {
+                    Msg.error(s, "Usage: /" + label + " pantry " + e.name + " vc \\<chest number>");
+                    return;
+                }
+                if (n < 1 || n > 1000) {
+                    Msg.error(s, "Chest numbers start at 1.");
+                    return;
+                }
+                if (!s.hasPermission("employees.admin") && !s.hasPermission("virtualchests.open." + n)) {
+                    Msg.error(s, "You don't have access to /chest " + n + ".");
+                    return;
+                }
+                mgr().setPantry(e, StorageTarget.virtual(n));
+                Msg.send(s, "<green>" + e.name + " now takes their food from <white>/chest " + n + "</white>.");
+            }
+            case "chest" -> {
+                if (!(s instanceof Player p)) return;
+                Block b = p.getTargetBlockExact(6);
+                if (b == null || !(b.getState(false) instanceof Container)) {
+                    Msg.error(p, "Look at a chest, barrel or other container within 6 blocks.");
+                    return;
+                }
+                setPantryChest(plugin, p, e, b);
+            }
+            case "storage", "reset", "none" -> {
+                mgr().setPantry(e, StorageTarget.NONE);
+                Msg.send(s, "<gray>" + e.name + " takes their food from where they deliver (<white>"
+                        + Describe.esc(site.remotearc.employees.Food.pantryName(plugin, e)) + "</white>).");
+            }
+            case "" -> {
+                double days = site.remotearc.employees.Food.days(plugin, e.food);
+                double stocked = site.remotearc.employees.Food.days(plugin, site.remotearc.employees.Food.inPantry(plugin, e));
+                Msg.send(s, "<gray>" + e.name + "'s food: <white>" + site.remotearc.employees.Food.daysText(days) + "</white> eaten-in, plus <white>"
+                        + site.remotearc.employees.Food.daysText(stocked) + "</white> in their pantry (<white>"
+                        + Describe.esc(site.remotearc.employees.Food.pantryName(plugin, e)) + "</white>).\n<dark_gray>Change it: /" + label
+                        + " pantry " + e.name + " chest | vc \\<n> | storage");
+            }
+            default -> Msg.error(s, "Usage: /" + label + " pantry " + e.name + " chest | vc \\<n> | storage");
         }
+    }
+
+    /** Makes a placed container the employee's pantry (from the command or its card). */
+    static void setPantryChest(ArcEmployees plugin, Player p, Employee e, Block b) {
+        if (!plugin.settings().chestsEnabled) {
+            Msg.error(p, "Placed chests are turned off in the config.");
+            return;
+        }
+        plugin.manager().setPantry(e, StorageTarget.chest(b));
+        Msg.send(p, "<green>" + e.name + " will take their food from that " + b.getType().name().toLowerCase(Locale.ROOT).replace('_', ' ')
+                + ".</green> <gray>Keep some bread (or any food) in it.");
     }
 
     // ── tab completion ────────────────────────────────────────────────────
@@ -1461,6 +1512,7 @@ final class EmployeesCommand implements TabExecutor {
             switch (args[0].toLowerCase(Locale.ROOT)) {
                 case "area" -> out.addAll(List.of("worldedit", "radius", "pos1", "pos2", "show", "tp", "bedrock"));
                 case "storage" -> out.addAll(List.of("vc", "chest", "backpack"));
+                case "pantry" -> out.addAll(List.of("chest", "vc", "storage"));
                 case "skin" -> {
                     out.addAll(List.of("default", "texture"));
                     for (Player p : Bukkit.getOnlinePlayers()) out.add(p.getName());

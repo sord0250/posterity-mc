@@ -50,7 +50,7 @@ public final class EventLog {
         String s = status.toLowerCase();
         return s.startsWith("can't") || s.startsWith("needs") || s.startsWith("out of") || s.startsWith("error")
                 || s.startsWith("waiting for materials") || s.startsWith("nothing to") || s.startsWith("no work area")
-                || s.startsWith("backpack full") || s.startsWith("on strike") || s.contains("is full") || s.contains("is missing")
+                || s.startsWith("backpack full") || s.startsWith("too hungry") || s.contains("is full") || s.contains("is missing")
                 || s.startsWith("couldn't");
     }
 
