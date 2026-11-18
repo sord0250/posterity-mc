@@ -29,6 +29,7 @@ public final class Settings {
 
     public final String currency;
     public final int maxPerPlayer;
+    public final int maxPerKingdom;
     public final boolean keepLoaded;
     public final int maxAreaSize;
     public final int defaultRadius;
@@ -152,6 +153,7 @@ public final class Settings {
     public Settings(FileConfiguration c, Logger log) {
         currency = c.getString("currency-symbol", "$");
         maxPerPlayer = Math.max(0, c.getInt("max-employees-per-player", 6));
+        maxPerKingdom = Math.max(0, c.getInt("max-employees-per-kingdom", 6));
         keepLoaded = c.getBoolean("keep-work-sites-loaded", true);
         maxAreaSize = clamp(c.getInt("max-area-size", 48), 3, 128);
         defaultRadius = clamp(c.getInt("default-area-radius", 8), 1, maxAreaSize / 2);

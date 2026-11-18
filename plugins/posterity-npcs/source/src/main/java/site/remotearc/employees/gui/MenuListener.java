@@ -28,7 +28,7 @@ public final class MenuListener implements Listener {
         Bukkit.getScheduler().runTaskTimer(plugin, () -> {
             for (Player p : Bukkit.getOnlinePlayers()) {
                 InventoryHolder h = p.getOpenInventory().getTopInventory().getHolder(false);
-                if (h instanceof Menu m && !(m instanceof ConfirmMenu) && m.live()) m.redraw();
+                if (h instanceof Menu m && m.live()) m.redraw();
             }
         }, 20L, 20L);
     }

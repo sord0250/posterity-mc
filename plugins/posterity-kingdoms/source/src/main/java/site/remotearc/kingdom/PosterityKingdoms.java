@@ -46,6 +46,7 @@ public final class PosterityKingdoms extends JavaPlugin {
             pc.setExecutor(cmd);
             pc.setTabCompleter(cmd);
         }
+        getServer().getPluginManager().registerEvents(new site.remotearc.kingdom.gui.Prompt(this), this);
         getLogger().info("Loaded " + kingdoms.all().size() + " kingdom(s).");
     }
 

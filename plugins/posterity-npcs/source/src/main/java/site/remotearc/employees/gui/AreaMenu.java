@@ -20,41 +20,6 @@ final class AreaMenu extends Menu {
         this.back = back;
     }
 
-    /** Where in the area to go: a compass of the four corners round the middle. */
-    private static final class TeleportMenu extends Menu {
-
-        private final Employee e;
-        private final Menu back;
-
-        TeleportMenu(ArcEmployees plugin, Employee e, Menu back) {
-            super(plugin, 3, Component.text("Teleport to " + e.name + "'s area"));
-            this.e = e;
-            this.back = back;
-        }
-
-        @Override
-        protected void draw() {
-            for (int s = 0; s < 27; s++) button(s, filler(), null);
-            var a = e.area;
-            if (a == null) return;
-            spot(2, "nw", "North-west corner", a.minX(), a.minZ());
-            spot(6, "ne", "North-east corner", a.maxX(), a.minZ());
-            button(4, icon(Material.COMPASS, "<gray>North is up", List.of()), null);
-            spot(13, "middle", "Middle", (a.minX() + a.maxX()) / 2, (a.minZ() + a.maxZ()) / 2);
-            spot(20, "sw", "South-west corner", a.minX(), a.maxZ());
-            spot(24, "se", "South-east corner", a.maxX(), a.maxZ());
-            button(18, back(), (p, c) -> back.open(p));
-        }
-
-        private void spot(int slot, String key, String label, int x, int z) {
-            button(slot, icon(key.equals("middle") ? Material.ENDER_EYE : Material.ENDER_PEARL, "<aqua>" + label,
-                    List.of("<gray>x " + x + ", z " + z, "", "<yellow>Click to go there")), (p, c) -> {
-                p.closeInventory();
-                run(p, "area " + ref(p, e) + " tp " + key);
-            });
-        }
-    }
-
     @Override
     protected void draw() {
         for (int s = 0; s < 27; s++) button(s, filler(), null);
@@ -98,11 +63,6 @@ final class AreaMenu extends Menu {
             p.closeInventory();
             run(p, "area " + ref(p, e) + " show");
         });
-        if (e.area != null) {
-            button(24, icon(Material.ENDER_PEARL, "<aqua>Teleport to the area", List.of(
-                    "<gray>To the middle or a corner; the", "<gray>outline shows when you get there.", "", "<yellow>Click to choose where")),
-                    (p, c) -> new TeleportMenu(plugin, e, this).open(p));
-        }
         if (e.job == site.remotearc.employees.job.JobType.QUARRY || e.job == site.remotearc.employees.job.JobType.MINER) {
             button(22, icon(Material.BEDROCK, "<aqua>Reach down to bedrock", List.of(
                     e.area == null ? "<gray>No area yet." : "<gray>Now down to y " + e.area.minY(),

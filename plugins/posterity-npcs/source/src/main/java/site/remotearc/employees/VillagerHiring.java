@@ -465,6 +465,12 @@ public final class VillagerHiring implements Listener {
             Msg.error(p, "You can employ at most " + limit + " people.");
             return null;
         }
+        String kingdom = plugin.kingdomBridge().kingdomOf(p.getUniqueId());
+        int kingdomLimit = plugin.settings().maxPerKingdom;
+        if (kingdom != null && !p.hasPermission("employees.admin") && mgr.countInKingdom(kingdom) >= kingdomLimit) {
+            Msg.error(p, "<white>" + Describe.esc(kingdom) + "</white> already has " + kingdomLimit + " NPCs; that's the most for now.");
+            return null;
+        }
         String name = wanted != null ? wanted : nameFor(p, v);
         if (!EmployeeManager.NAME.matcher(name).matches()) {
             Msg.error(p, "Names are 1-16 letters, digits or underscores.");

@@ -2,3 +2,6 @@
 
 # Shown before every amount of money.
 currency-symbol: "$"
+
+# What /kingdom flag buy costs, in emeralds.
+flag-emeralds: 3

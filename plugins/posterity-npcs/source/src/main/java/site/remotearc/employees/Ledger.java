@@ -246,11 +246,6 @@ public final class Ledger {
         }
     }
 
-    public void wage(Employee e, double amount) {
-        if (amount <= 0) return;
-        for (Bucket b : into(e)) b.wages += amount;
-    }
-
     /** Moves the activity counters' growth since the last sample into the books. */
     public void sample() {
         if (plugin.manager() == null) return;

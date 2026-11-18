@@ -49,7 +49,7 @@ final class LinkMenu extends Menu {
                 option(slot++, Material.LEVER, "Pause / resume " + e.name, "toggle " + e.name);
             }
         }
-        button(29, icon(Material.WRITABLE_BOOK, "<aqua>Any /employees command", List.of("<gray>e.g. <white>board move</white> or <white>pay Bram</white>.",
+        button(29, icon(Material.WRITABLE_BOOK, "<aqua>Any /employees command", List.of("<gray>e.g. <white>board move</white> or <white>pause Bram</white>.",
                 "", "<yellow>Click, then type it")), (p, c) -> Prompt.ask(p, "Which /employees command should it run? (without /employees)",
                 text -> arm(p, text.replaceFirst("^/?(employees|emp)\\s+", ""))));
         button(33, icon(Material.BARRIER, "<red>Unlink a control", List.of("", "<yellow>Click, then right-click the block")), (p, c) -> {

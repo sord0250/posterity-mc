@@ -77,7 +77,7 @@ import java.util.UUID;
  */
 public final class OutOfBody implements Listener {
 
-    public enum Goal { AREA, STORAGE, PANTRY }
+    public enum Goal { AREA, STORAGE, PANTRY, ZONE }
 
     private static final int RANGE = 96;
     private static final double REACH = 160;
@@ -225,6 +225,7 @@ public final class OutOfBody implements Listener {
                     case AREA -> "Left-click two corners of " + e.name + "'s work area";
                     case STORAGE -> "Left-click the chest " + e.name + " delivers to";
                     case PANTRY -> "Left-click the chest " + e.name + " eats from";
+                    case ZONE -> "Left-click two corners of the zone " + e.name + " should leave alone";
                 }, NamedTextColor.GRAY)));
         Msg.send(p, "<aqua>You've left your body.</aqua> <gray>Fly about (space up, shift down) and look where you mean."
                 + " <white>Left-click</white> to pick, <white>right-click</white> (holding anything) to go back a step,"
@@ -327,7 +328,7 @@ public final class OutOfBody implements Listener {
         if (!p.isFlying()) p.setFlying(true);
 
         Block look = target(p);
-        if (s.goal != Goal.AREA) {
+        if (s.goal == Goal.STORAGE || s.goal == Goal.PANTRY) {
             boolean ok = look != null && look.getState(false) instanceof Container;
             if (look != null) box(p, look.getX(), look.getY(), look.getZ(), look.getX() + 1, look.getY() + 1, look.getZ() + 1, ok ? EDGE : BAD, 0.25);
             p.sendActionBar(Msg.parse(ok ? "<green>Left-click: use this " + look.getType().name().toLowerCase(Locale.ROOT).replace('_', ' ')
@@ -340,7 +341,7 @@ public final class OutOfBody implements Listener {
         if (s.a == null) {
             if (look != null) cursor(p, look);
             p.sendActionBar(Msg.parse("<yellow>Left-click: first corner <dark_gray>· <gray>F: cancel"));
-            if (s.e.area != null && s.ticks % 10 == 0) outline(p, s.e.area, CURSOR, 2);   // the area as it is now
+            if (s.goal == Goal.AREA && s.e.area != null && s.ticks % 10 == 0) outline(p, s.e.area, CURSOR, 2);   // the area as it is now
             return;
         }
         BlockPos other = s.depthStep ? s.b : look == null ? null : BlockPos.of(look);
@@ -361,18 +362,22 @@ public final class OutOfBody implements Listener {
         } else if (s.depthStep) {
             p.sendActionBar(Msg.parse("<white>" + size + " <dark_gray>· <yellow>scroll: deeper/shallower · left-click: done <dark_gray>· <gray>right-click: back"));
         } else {
-            p.sendActionBar(Msg.parse("<white>" + size + " <dark_gray>· <yellow>left-click: " + (digs(s.e) ? "next, the depth" : "done")
+            p.sendActionBar(Msg.parse("<white>" + size + " <dark_gray>· <yellow>left-click: " + (digs(s) ? "next, the depth" : "done")
                     + " <dark_gray>· <gray>right-click: undo"));
         }
     }
 
-    private static boolean digs(Employee e) {
-        return e.job == JobType.QUARRY || e.job == JobType.MINER;
+    private static boolean digs(Session s) {
+        return s.goal == Goal.AREA && (s.e.job == JobType.QUARRY || s.e.job == JobType.MINER);
     }
 
-    /** The area from the first corner to {@code other}, as hiring would make it there (and the depth picked, if any). */
+    /** The area from the first corner to {@code other}: an exact box for a zone, or as hiring would make it there (and the depth picked, if any). */
     private WorkArea build(Session s, BlockPos other) {
         World w = s.p.getWorld();
+        if (s.goal == Goal.ZONE) {
+            int low = Math.min(s.a.y(), other.y()), high = Math.max(s.a.y(), other.y());
+            return WorkArea.of(w.getName(), s.a.x(), low, s.a.z(), other.x(), high, other.z());
+        }
         Settings.JobSettings js = plugin.settings().job(s.e.job);
         // As if standing on the clicked blocks: hiring's height rules apply from the feet up.
         int low = Math.min(s.a.y(), other.y()) + 1, high = Math.max(s.a.y(), other.y()) + 1;
@@ -405,7 +410,7 @@ public final class OutOfBody implements Listener {
     private void pick(Session s) {
         Player p = s.p;
         Block look = target(p);
-        if (s.goal != Goal.AREA) {
+        if (s.goal == Goal.STORAGE || s.goal == Goal.PANTRY) {
             if (look == null || !(look.getState(false) instanceof Container)) {
                 p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.6f, 0.8f);
                 return;
@@ -430,7 +435,7 @@ public final class OutOfBody implements Listener {
                 return;
             }
             s.b = other;
-            if (digs(s.e)) {
+            if (digs(s)) {
                 s.depthStep = true;
                 s.depth = area.height();
                 p.playSound(p.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 0.6f, 1.5f);
@@ -443,7 +448,7 @@ public final class OutOfBody implements Listener {
     }
 
     private void back(Session s) {
-        if (s.goal != Goal.AREA) return;
+        if (s.goal != Goal.AREA && s.goal != Goal.ZONE) return;
         if (s.depthStep) {
             s.depthStep = false;
             s.b = null;
@@ -481,9 +486,19 @@ public final class OutOfBody implements Listener {
     private void finish(Session s, WorkArea area) {
         Employee e = s.e;
         Player p = s.p;
+        Goal goal = s.goal;
         end(s, null);
-        plugin.manager().setArea(e, area);
-        Msg.send(p, "<green>" + e.name + " now works in <white>" + area.describe() + "</white> (y " + area.minY() + " to " + area.maxY() + ").");
+        if (goal == Goal.ZONE) {
+            e.zones.add(area);
+            plugin.zonePresets().changed();
+            plugin.manager().markDirty();
+            e.worker.interrupt();
+            String what = e.job == JobType.GUARD || e.job == JobType.BODYGUARD ? "leaves mobs alone" : "won't work";
+            Msg.send(p, "<green>" + e.name + " " + what + " in <white>" + area.describe() + "</white> (y " + area.minY() + " to " + area.maxY() + ") now.");
+        } else {
+            plugin.manager().setArea(e, area);
+            Msg.send(p, "<green>" + e.name + " now works in <white>" + area.describe() + "</white> (y " + area.minY() + " to " + area.maxY() + ").");
+        }
         AreaPreview.show(plugin, p, area, 200);
     }
 

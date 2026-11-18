@@ -16,7 +16,9 @@ import org.bukkit.entity.Pose;
 import org.bukkit.util.BoundingBox;
 import org.bukkit.util.Vector;
 import site.remotearc.employees.Employee;
+import site.remotearc.employees.House;
 import site.remotearc.employees.Personality;
+import site.remotearc.employees.util.BlockPos;
 import site.remotearc.employees.util.Msg;
 import site.remotearc.employees.util.Pathfinder;
 
@@ -108,16 +110,24 @@ public final class Distractions {
         return own;
     }
 
-    /** Night: off to bed (its home's, if it can get there), and asleep until morning. */
+    /** Night: off to bed (its home's if it can get there, otherwise any free bed nearby), and asleep until morning. */
     static Task sleep(Worker w) {
         return w.e.isLoaded() ? new Sleep() : null;
     }
 
-    /** Sleeps until the night is over (the worker interrupts it when work starts). */
+    /** Loose (not anyone's home) beds currently taken for the night; freed when the sleeper wakes or gives up. */
+    private static final Set<String> LOOSE_BEDS_IN_USE = new HashSet<>();
+
+    private static String bedKey(World world, Block head) {
+        return world.getName() + "@" + head.getX() + "," + head.getY() + "," + head.getZ();
+    }
+
+    /** Sleeps until the night is over (the worker interrupts it when work starts); stays awake if it has no bed to use. */
     static final class Sleep extends Distraction {
         private Vector bed;
         private Pathfinder.Goal goal;
         private boolean there;
+        private String claimed;   // the loose bed's key, while held
 
         Sleep() {
             super(20 * 60 * 20);
@@ -127,32 +137,70 @@ public final class Distractions {
         @Override
         void start(Worker w) {
             var h = w.e.house;
-            if (h == null || !h.world.equals(w.world().getName()) || !loaded(w.world(), h.bed.x(), h.bed.z())) return;
-            Vector v = new Vector(h.bed.x() + 0.5, h.bed.y(), h.bed.z() + 0.5);
-            if (v.distanceSquared(w.e.location.toVector()) <= 96 * 96) bed = v;
+            if (h != null && h.world.equals(w.world().getName()) && loaded(w.world(), h.bed.x(), h.bed.z())) {
+                Vector v = new Vector(h.bed.x() + 0.5, h.bed.y(), h.bed.z() + 0.5);
+                if (v.distanceSquared(w.e.location.toVector()) <= 96 * 96) bed = v;
+            }
+            if (bed == null) {
+                Block head = nearestBlock(w, b -> freeBed(w, b));
+                if (head != null) {
+                    bed = new Vector(head.getX() + 0.5, head.getY(), head.getZ() + 0.5);
+                    claimed = bedKey(w.world(), head);
+                    LOOSE_BEDS_IN_USE.add(claimed);
+                }
+            }
+        }
+
+        /** A whole bed, nobody's home, not already taken by someone else tonight. */
+        private boolean freeBed(Worker w, Block b) {
+            Block head = House.bedHead(b);
+            return head != null && !LOOSE_BEDS_IN_USE.contains(bedKey(w.world(), head))
+                    && w.plugin().manager().bedOwner(w.world().getName(), BlockPos.of(head)) == null;
         }
 
         @Override
         String doing(Worker w) {
-            return bed == null ? "no bed of their own" : there ? "in bed" : "heading home to bed";
+            return bed == null ? "no bed to sleep in" : there ? "in bed" : "heading to bed";
         }
 
         @Override
         public String status(Worker w) {
-            return bed == null ? "Sleeping rough (no home yet)" : there ? "Sleeping in bed" : "Heading home to bed";
+            return bed == null ? "Awake (no bed nearby)" : there ? "Sleeping in bed" : "Heading to bed";
         }
 
         @Override
         Result step(Worker w) {
-            if (bed != null && !there) {
+            if (bed == null) {
+                pose(w, Pose.STANDING);
+                return Result.RUNNING;
+            }
+            if (!there) {
                 if (goal == null) goal = Pathfinder.near(bed.getX(), bed.getY(), bed.getZ(), 1.5, 3, 2);
                 Worker.Move m = w.walk(goal, bed);   // the bed as target: the path search reaches past the work area
                 if (m == Worker.Move.MOVING) return Result.RUNNING;
-                if (m == Worker.Move.FAILED) bed = null;   // can't get home: sleeps where it is
+                if (m == Worker.Move.FAILED) {
+                    release();
+                    bed = null;
+                    pose(w, Pose.STANDING);
+                    return Result.RUNNING;
+                }
                 there = true;
             }
             pose(w, Pose.SLEEPING);
             return Result.RUNNING;
+        }
+
+        @Override
+        public void end(Worker w) {
+            super.end(w);
+            release();
+        }
+
+        private void release() {
+            if (claimed != null) {
+                LOOSE_BEDS_IN_USE.remove(claimed);
+                claimed = null;
+            }
         }
     }
 

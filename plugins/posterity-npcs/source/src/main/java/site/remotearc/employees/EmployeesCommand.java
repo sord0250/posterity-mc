@@ -40,13 +40,13 @@ final class EmployeesCommand implements TabExecutor {
 
     private static final Pattern MC_NAME = Pattern.compile("[A-Za-z0-9_]{3,16}");
     private static final List<String> SUBS = List.of("plan", "help", "hire", "list", "info", "fire", "rename", "skin", "area",
-            "storage", "pantry", "pause", "resume", "move", "tp", "jobs", "filter", "supply", "herd", "build", "blueprints", "board", "chests",
+            "storage", "pantry", "pause", "resume", "move", "jobs", "filter", "supply", "herd", "build", "blueprints", "board", "chests",
 "sell", "market", "zone", "toggle", "follow", "stay", "roam", "avatar", "avatars", "trades", "craft", "presets", "away", "report", "profit", "route", "repair", "trust", "untrust", "manage", "pauseall", "resumeall", "toggleall", "link", "unlink", "debug", "stalls", "house", "home", "homes");
     /** Subcommands that don't name an employee. */
     private static final List<String> GLOBAL = List.of("plan", "help", "hire", "list", "jobs", "blueprints", "board", "chests", "market",
             "pauseall", "resumeall", "toggleall", "link", "unlink", "menu", "avatars", "presets", "report", "profit", "trust",
             "untrust", "manage", "homes");
-    private static final List<String> ADMIN_SUBS = List.of("all", "reload", "config", "unlock", "lock");
+    private static final List<String> ADMIN_SUBS = List.of("all", "reload", "config", "unlock", "lock", "greeter");
 
     private record Corners(UUID employee, BlockPos a, BlockPos b, String world) {}
 
@@ -129,7 +129,7 @@ final class EmployeesCommand implements TabExecutor {
                 if (sub.equals("trust")) {
                     managers.add(p.getUniqueId(), other.getUniqueId());
                     Msg.send(p, "<green>" + who + " can now manage all your employees: change their work, routes, builds and settings, pause"
-                            + " or fire them. Wages still come from your balance. <gray>Undo: /" + label + " untrust " + who);
+                            + " or fire them. Pantries are still yours to keep stocked. <gray>Undo: /" + label + " untrust " + who);
                     if (other.getPlayer() != null) Msg.send(other.getPlayer(), "<green>" + p.getName() + " lets you manage their employees: <white>/"
                             + label + " manage " + p.getName());
                 } else {
@@ -237,6 +237,10 @@ final class EmployeesCommand implements TabExecutor {
                 if (!admin(s)) return true;
                 config(s, label, args);
             }
+            case "greeter" -> {
+                if (!admin(s)) return true;
+                greeter(s, args);
+            }
             default -> {
                 if (!SUBS.contains(sub)) {
                     Msg.error(s, "Unknown subcommand. Try <white>/" + label + " help");
@@ -268,9 +272,6 @@ final class EmployeesCommand implements TabExecutor {
                         Msg.send(s, "<green>" + e.name + " is back at work.");
                     }
                     case "move" -> move(s, e);
-                    case "tp" -> {
-                        if (s instanceof Player p) p.teleport(e.location.clone().add(0, 0.1, 0));
-                    }
                     case "pantry" -> pantry(s, e, label, args);
                     case "stalls", "stall" -> jobs.stalls(s, e, label, args);
                     case "debug" -> {
@@ -495,7 +496,7 @@ final class EmployeesCommand implements TabExecutor {
         s.sendMessage(Msg.parse(c + " hire \\<job> [name]</white> <gray>- hire the villager you're looking at (or shift-right-click one)"
                 + (plugin.settings().villagersOnly ? "" : "; with no villager, someone where you stand") + " (" + EmployeeManager.jobKeyList() + ")"));
         s.sendMessage(Msg.parse(c + " list | jobs | info \\<name></white> <gray>- see who works for you"));
-        s.sendMessage(Msg.parse(c + " area \\<name> worldedit | radius \\<r> | pos1 | pos2 | show | tp</white> <gray>- set, see or go to their work area"));
+        s.sendMessage(Msg.parse(c + " area \\<name> worldedit | radius \\<r> | pos1 | pos2 | show</white> <gray>- set or see their work area"));
         s.sendMessage(Msg.parse(c + " zone \\<name> add [preset] | remove | show | clear</white> <gray>- places they leave alone (WorldEdit selection)"));
         s.sendMessage(Msg.parse(c + " presets save | delete | show \\<preset></white> <gray>- named zones to give to several employees"));
         s.sendMessage(Msg.parse(c + " storage \\<name> vc \\<n> | chest | backpack</white> <gray>- where harvests go"));
@@ -520,7 +521,7 @@ final class EmployeesCommand implements TabExecutor {
             s.sendMessage(Msg.parse(c + " homes upload catalog | add \\<blueprint> \\<id> [name] | remove \\<id> | icon \\<id> \\<item> | style \\<id> \\<style> | describe \\<id> \\<text></white> <gray>- the NPC Homes catalog"));
         }
         s.sendMessage(Msg.parse(c + " homes list | upload | mine | forget \\<name></white> <gray>- the NPC Homes catalog, and houses of your own (upload from your computer)"));
-        s.sendMessage(Msg.parse(c + " rename | pause | resume | toggle | move | tp | pay | fire \\<name></white>"));
+        s.sendMessage(Msg.parse(c + " rename | pause | resume | toggle | move | fire \\<name></white>"));
         s.sendMessage(Msg.parse(c + " pauseall | resumeall | toggleall</white> <gray>- everyone at once"));
         s.sendMessage(Msg.parse(c + " away \\<name> work | rest</white> <gray>- keep working while nobody's online (they rest by default)"));
         s.sendMessage(Msg.parse(c + " avatar \\<name> [remove] | avatars [remove]</white> <gray>- stand-ins for your control room"));
@@ -528,6 +529,8 @@ final class EmployeesCommand implements TabExecutor {
         s.sendMessage(Msg.parse(c + " link \\<action> | unlink</white> <gray>- make a button or lever run an action (then right-click it)"));
         if (s.hasPermission("employees.admin")) {
             s.sendMessage(Msg.parse(c + " config \\<setting> [value]</white> <gray>- admins: see or change any setting, e.g. market.max-income-per-day"));
+            s.sendMessage(Msg.parse(c + " greeter here | skin ...</white> <gray>- admins: move the Guide (the welcome NPC) to where"
+                    + " you're standing, or give it a different look (same options as /" + label + " skin)"));
         }
     }
 
@@ -579,6 +582,12 @@ final class EmployeesCommand implements TabExecutor {
         int limit = plugin.settings().maxPerPlayer;
         if (!p.hasPermission("employees.admin") && mgr().ownedBy(p.getUniqueId()).size() >= limit) {
             Msg.error(p, "You can employ at most " + limit + " people.");
+            return;
+        }
+        String kingdom = plugin.kingdomBridge().kingdomOf(p.getUniqueId());
+        int kingdomLimit = plugin.settings().maxPerKingdom;
+        if (kingdom != null && !p.hasPermission("employees.admin") && mgr().countInKingdom(kingdom) >= kingdomLimit) {
+            Msg.error(p, "<white>" + Describe.esc(kingdom) + "</white> already has " + kingdomLimit + " NPCs; that's the most for now.");
             return;
         }
 
@@ -1118,6 +1127,71 @@ final class EmployeesCommand implements TabExecutor {
         Msg.send(s, "<gray>" + e.name + " now wears <white><skin></white>.", Msg.p("skin", skin.describe()));
     }
 
+    /** /employees greeter here | skin ... : admins move the Guide, or give it a different look. */
+    private void greeter(CommandSender s, String[] args) {
+        String mode = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : "";
+        switch (mode) {
+            case "here" -> {
+                if (!(s instanceof Player p)) {
+                    Msg.error(s, "Players only.");
+                    return;
+                }
+                plugin.greeter().moveTo(p.getLocation());
+                Msg.send(p, "<green>The Guide is now here.");
+            }
+            case "skin" -> greeterSkin(s, args);
+            default -> Msg.error(s, "Usage: /employees greeter here | skin \\<minecraft name> | default | texture \\<key>");
+        }
+    }
+
+    private void greeterSkin(CommandSender s, String[] args) {
+        if (args.length < 3) {
+            Msg.error(s, "Usage: /employees greeter skin \\<minecraft name> | default [" + String.join("|", Skin.DEFAULT_SKINS)
+                    + "] [slim] | texture \\<namespace:path> [slim]");
+            return;
+        }
+        String kind = args[2].toLowerCase(Locale.ROOT);
+        boolean slim = args.length > 4 && args[4].equalsIgnoreCase("slim");
+        if (kind.equals("default")) {
+            String which = args.length > 3 && Skin.DEFAULT_SKINS.contains(args[3].toLowerCase(Locale.ROOT)) ? args[3] : null;
+            Skin skin = which == null ? Skin.random(new java.util.Random())
+                    : Skin.builtIn(which, args.length > 4 ? slim : which.equalsIgnoreCase("alex"));
+            plugin.greeter().setSkin(skin);
+            Msg.send(s, "<gray>The Guide now wears <white><skin></white>.", Msg.p("skin", skin.describe()));
+            return;
+        }
+        if (kind.equals("texture")) {
+            if (args.length < 4) {
+                Msg.error(s, "Usage: /employees greeter skin texture \\<namespace:path> [slim]");
+                return;
+            }
+            try {
+                Key.key(args[3]);
+            } catch (InvalidKeyException ex) {
+                Msg.error(s, "That isn't a valid texture key (like <white>arc:entity/employees/bob</white>).");
+                return;
+            }
+            Skin skin = Skin.texture(args[3], slim);
+            plugin.greeter().setSkin(skin);
+            Msg.send(s, "<gray>The Guide now wears <white><skin></white>.", Msg.p("skin", skin.describe()));
+            return;
+        }
+        String player = args[2];
+        if (!MC_NAME.matcher(player).matches()) {
+            Msg.error(s, "That isn't a Minecraft name.");
+            return;
+        }
+        Msg.send(s, "<gray>Looking up <white><player></white>'s skin...", Msg.p("player", player));
+        Skin.fetchPlayer(plugin, player, skin -> {
+            if (skin == null) {
+                Msg.error(s, "Couldn't find a Minecraft account called <white><player></white>.", Msg.p("player", player));
+                return;
+            }
+            plugin.greeter().setSkin(skin);
+            Msg.send(s, "<gray>The Guide now wears <white><skin></white>.", Msg.p("skin", skin.describe()));
+        });
+    }
+
     // ── work area ─────────────────────────────────────────────────────────
 
     private void area(CommandSender s, Employee e, String label, String[] args) {
@@ -1129,7 +1203,7 @@ final class EmployeesCommand implements TabExecutor {
         Location at = p.getLocation();
         Settings.JobSettings js = plugin.settings().job(e.job);
         int max = js.maxAreaSize();
-        if (e.job == JobType.BUILDER && !mode.equals("show") && !mode.equals("tp") && !mode.equals("teleport")) {
+        if (e.job == JobType.BUILDER && !mode.equals("show")) {
             Msg.error(p, "A builder's work area follows its blueprint. Place one with <white>/" + label + " build " + e.name + " \\<blueprint></white>.");
             return;
         }
@@ -1141,40 +1215,6 @@ final class EmployeesCommand implements TabExecutor {
                 }
                 AreaPreview.show(plugin, p, e.area, 400);
                 Msg.send(p, "<gray>" + e.name + "'s work area: <white>" + e.area.describe() + "</white>, y " + e.area.minY() + " to " + e.area.maxY() + ".");
-            }
-            case "tp", "teleport", "goto" -> {
-                if (e.area == null) {
-                    Msg.error(p, e.name + " has no work area yet.");
-                    return;
-                }
-                WorkArea ar = e.area;
-                String where = args.length > 3 ? args[3].toLowerCase(Locale.ROOT) : "middle";
-                Location to = switch (where) {
-                    case "nw", "northwest" -> mgr().areaViewpoint(ar, ar.minX(), ar.minZ());
-                    case "ne", "northeast" -> mgr().areaViewpoint(ar, ar.maxX(), ar.minZ());
-                    case "sw", "southwest" -> mgr().areaViewpoint(ar, ar.minX(), ar.maxZ());
-                    case "se", "southeast" -> mgr().areaViewpoint(ar, ar.maxX(), ar.maxZ());
-                    default -> mgr().areaViewpoint(ar);
-                };
-                String placeName = switch (where) {
-                    case "nw", "northwest" -> "the north-west corner";
-                    case "ne", "northeast" -> "the north-east corner";
-                    case "sw", "southwest" -> "the south-west corner";
-                    case "se", "southeast" -> "the south-east corner";
-                    default -> "the middle";
-                };
-                if (to == null) {
-                    Msg.error(p, "That area's world isn't loaded.");
-                    return;
-                }
-                to.setYaw(at.getYaw());
-                to.setPitch(at.getPitch());
-                p.teleportAsync(to).thenAccept(ok -> {
-                    if (!ok) return;
-                    AreaPreview.show(plugin, p, e.area, 400);
-                    Msg.send(p, "<gray>You're at " + placeName + " of " + e.name + "'s work area (" + e.area.describe() + ", y "
-                            + e.area.minY() + " to " + e.area.maxY() + "). <dark_gray>The outline shows for 20 seconds.");
-                });
             }
             case "radius" -> {
                 int r;
@@ -1443,6 +1483,18 @@ final class EmployeesCommand implements TabExecutor {
             out.removeIf(o -> !o.startsWith(last));
             return out;
         }
+        if (first.equals("greeter") && s.hasPermission("employees.admin")) {
+            if (args.length == 2) out.addAll(List.of("here", "skin"));
+            else if (args.length == 3 && args[1].equalsIgnoreCase("skin")) {
+                out.addAll(List.of("default", "texture"));
+                for (Player pl : Bukkit.getOnlinePlayers()) out.add(pl.getName());
+            } else if (args.length == 4 && args[1].equalsIgnoreCase("skin") && args[2].equalsIgnoreCase("default")) {
+                out.addAll(Skin.DEFAULT_SKINS);
+            }
+            String last = args[args.length - 1].toLowerCase(Locale.ROOT);
+            out.removeIf(o -> !o.toLowerCase(Locale.ROOT).startsWith(last));
+            return out;
+        }
         if (first.equals("board") && args.length == 2) {
             for (String o : List.of("status", "sales", "business", "employee", "size", "width", "move", "remove", "help")) if (o.startsWith(args[1].toLowerCase(Locale.ROOT))) out.add(o);
             return out;
@@ -1514,7 +1566,7 @@ final class EmployeesCommand implements TabExecutor {
             }
         } else if (args.length == 3) {
             switch (args[0].toLowerCase(Locale.ROOT)) {
-                case "area" -> out.addAll(List.of("worldedit", "radius", "pos1", "pos2", "show", "tp", "bedrock"));
+                case "area" -> out.addAll(List.of("worldedit", "radius", "pos1", "pos2", "show", "bedrock"));
                 case "storage" -> out.addAll(List.of("vc", "chest", "backpack"));
                 case "pantry" -> out.addAll(List.of("chest", "vc", "storage"));
                 case "skin" -> {
@@ -1534,7 +1586,6 @@ final class EmployeesCommand implements TabExecutor {
             String sub = args[0].toLowerCase(Locale.ROOT), mode = args[2].toLowerCase(Locale.ROOT);
             if (sub.equals("skin") && mode.equals("default")) out.addAll(Skin.DEFAULT_SKINS);
             else if (sub.equals("area") && mode.equals("radius")) out.addAll(List.of("4", "8", "12", "16"));
-            else if (sub.equals("area") && mode.equals("tp")) out.addAll(List.of("middle", "nw", "ne", "sw", "se"));
             else if (sub.equals("storage") && mode.equals("vc")) out.add(String.valueOf(plugin.settings().vcFirstChest));
             else if ((sub.equals("zone") || sub.equals("zones")) && (mode.equals("add") || mode.equals("remove")) && s instanceof Player p) {
                 out.addAll(plugin.zonePresets().of(p.getUniqueId()).keySet());

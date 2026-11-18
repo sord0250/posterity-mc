@@ -2,6 +2,7 @@ package site.remotearc.employees.gui;
 
 import net.kyori.adventure.text.Component;
 import org.bukkit.Material;
+import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import site.remotearc.employees.ArcEmployees;
 import site.remotearc.employees.Employee;
@@ -21,106 +22,105 @@ final class SellRulesMenu extends Menu {
 
     private static final int[] KEEPS = {0, 64, 256, 1024, 2304};
     private static final int[] PERCENTS = {100, 75, 50, 25};
+    private static final int SHOWN = 12;
 
     private final Employee e;
     private final Menu back;
 
     SellRulesMenu(ArcEmployees plugin, Employee e, Menu back) {
-        super(plugin, 6, Component.text(e.name + ": selling"));
+        super(plugin, 1, Component.empty());
         this.e = e;
         this.back = back;
     }
 
     @Override
-    protected void draw() {
-        for (int s = 0; s < 54; s++) button(s, filler(), null);
+    protected void draw() {}
+
+    @Override
+    public void open(Player p) {
         double[] today = e.soldToday();
-        List<String> info = new ArrayList<>(List.of(
-                "<gray>Each time " + e.name + " delivers (every " + plugin.settings().vcDeliveryTicks / 20 + "s to a /chest),",
-                "<gray>items it sells go to the market instead,",
-                "<gray>by its rule: keep a stock in storage first,",
-                "<gray>sell a share of the rest, at most n a day.",
-                "<gray>Needs a merchant somewhere on the server.",
-                "",
-                "<gray>Last 24h: <white>" + (long) today[0] + "</white> items for <green>" + Msg.money(today[1]),
-                "<gray>All time: <white>" + e.stats.itemsSold + "</white> items for <green>" + Msg.money(e.stats.earned)));
+        List<String> lines = new ArrayList<>();
+        lines.add("<gray>Each time " + e.name + " delivers (every " + plugin.settings().vcDeliveryTicks / 20 + "s to a /chest), items it"
+                + " sells go to the market instead, by its rule: keep a stock in storage first, sell a share of the rest, at most n a"
+                + " day. Needs a merchant somewhere on the server.");
+        StringBuilder sales = new StringBuilder("<gray>Last 24h: <white>" + (long) today[0] + "</white> items for <green>" + Msg.money(today[1])
+                + "\n<gray>All time: <white>" + e.stats.itemsSold + "</white> items for <green>" + Msg.money(e.stats.earned));
         int shown = 0;
         for (Employee.SaleRecord r : e.sales) {
-            if (shown++ >= 6) break;
-            info.add("<dark_gray>" + EventLog.age(r.time()) + " ago: " + Describe.esc(r.what()) + " → " + Msg.money(r.money()));
+            if (shown++ >= 4) break;
+            sales.append("\n<dark_gray>").append(EventLog.age(r.time())).append(" ago: ").append(Describe.esc(r.what())).append(" → ").append(Msg.money(r.money()));
         }
-        button(4, icon(Material.BOOK, "<gold>How selling works", info), null);
+        lines.add(sales.toString());
 
+        List<Dialogs.Button> b = new ArrayList<>();
         Employee.SellRule all = e.sellAllRule;
-        ItemStack allIcon = icon(e.sellAll ? Material.LIME_DYE : Material.GRAY_DYE,
-                "<aqua>Sell everything, except what's kept: " + (e.sellAll ? "<green>on" : "<red>off"), List.of(
-                        e.sellAll ? "<gray>Everything merchants buy is sold (" + all.describe() + ")," : "<gray>Off: only the items under Sells are sold.",
-                        e.sellAll ? "<gray>except the items under Never sells." : "",
-                        "", "<yellow>Click: on/off", "<yellow>Right-click: stock to keep of each (0/64/256/1024/2304)",
-                        "<yellow>Shift-click: share to sell (100/75/50/25%)"));
-        button(10, e.sellAll ? glow(allIcon) : allIcon, (p, c) -> {
-            if (c.isShiftClick()) e.sellAllRule = new Employee.SellRule(all.keep(), cycle(PERCENTS, all.percent(), false), all.daily());
-            else if (c.isRightClick()) e.sellAllRule = new Employee.SellRule(cycle(KEEPS, all.keep(), true), all.percent(), all.daily());
-            else e.sellAll = !e.sellAll;
-            if (c.isShiftClick() || c.isRightClick()) e.sellAll = true;
+        b.add(Dialogs.button("<aqua>Sell everything, except what's kept: " + (e.sellAll ? "<green>on" : "<red>off"),
+                e.sellAll ? "<gray>Everything merchants buy is sold (" + all.describe() + "), except the items under Never sells."
+                        : "<gray>Off: only the items under Sells are sold.", pl -> {
+            e.sellAll = !e.sellAll;
             plugin.manager().markDirty();
-            redraw();
-        });
+            open(pl);
+        }));
+        b.add(Dialogs.button("<aqua>Stock to keep of each: <white>" + (all.keep() == 0 ? "none" : all.keep()),
+                "<gray>Cycles 0 / 64 / 256 / 1024 / 2304. Turns 'sell everything' on.", pl -> {
+            e.sellAllRule = new Employee.SellRule(cycle(KEEPS, all.keep(), true), all.percent(), all.daily());
+            e.sellAll = true;
+            plugin.manager().markDirty();
+            open(pl);
+        }));
+        b.add(Dialogs.button("<aqua>Share to sell: <white>" + all.percent() + "%", "<gray>Cycles 100 / 75 / 50 / 25%. Turns 'sell everything' on.", pl -> {
+            e.sellAllRule = new Employee.SellRule(all.keep(), cycle(PERCENTS, all.percent(), false), all.daily());
+            e.sellAll = true;
+            plugin.manager().markDirty();
+            open(pl);
+        }));
 
-        button(12, icon(Material.EMERALD, "<green>Add items to sell", List.of(
-                "<gray>Pick from what " + e.name + " has, or search",
-                "<gray>for any item. They're sold all; click one",
-                "<gray>afterwards to keep a stock or sell a share.",
-                "", "<yellow>Click to choose")), (p, c) -> new ItemPickerMenu(plugin, "Sell", suggestions(), null, 0,
+        b.add(Dialogs.button("<green>Add items to sell", "<gray>Pick from what " + e.name + " has, or search for any item. They're sold"
+                + " all; click one afterward to keep a stock or sell a share.", pl -> new ItemPickerMenu(plugin, "Sell", suggestions(), null, 0,
                 e.sellRules.keySet(), m -> {
-                    e.sellRules.put(m, Employee.SellRule.ALL);
-                    e.neverSell.remove(m);
-                    plugin.manager().markDirty();
-                }, this).open(p));
-
-        button(14, icon(Material.CHEST, "<gold>Add items to never sell", List.of(
-                "<gray>These are always kept, even with",
-                "<gray>'sell everything' on.", "", "<yellow>Click to choose")), (p, c) -> new ItemPickerMenu(plugin, "Never sell",
-                suggestions(), null, 0, e.neverSell, m -> {
-                    e.neverSell.add(m);
-                    e.sellRules.remove(m);
-                    plugin.manager().markDirty();
-                }, this).open(p));
-
-        button(16, icon(Material.BARRIER, "<red>Stop selling", List.of("<gray>Clears both lists.", "", "<yellow>Click to clear")), (p, c) -> {
+            e.sellRules.put(m, Employee.SellRule.ALL);
+            e.neverSell.remove(m);
+            plugin.manager().markDirty();
+        }, this).open(pl)));
+        b.add(Dialogs.button("<gold>Add items to never sell", "<gray>These are always kept, even with 'sell everything' on.", pl ->
+                new ItemPickerMenu(plugin, "Never sell", suggestions(), null, 0, e.neverSell, m -> {
+            e.neverSell.add(m);
+            e.sellRules.remove(m);
+            plugin.manager().markDirty();
+        }, this).open(pl)));
+        b.add(Dialogs.button("<red>Stop selling", "<gray>Clears both lists.", pl -> {
             e.sellAll = false;
             e.sellRules.clear();
             e.neverSell.clear();
             plugin.manager().markDirty();
-            redraw();
-        });
+            open(pl);
+        }));
 
-        button(18, icon(Material.EMERALD, "<green>Sells →", List.of("<gray>Each with its own rule.")), null);
-        int slot = 19;
+        int shownSell = 0;
         for (Map.Entry<Material, Employee.SellRule> en : new ArrayList<>(e.sellRules.entrySet())) {
-            if (slot > 35) break;
+            if (shownSell++ >= SHOWN) {
+                b.add(Dialogs.button("<gray>and " + (e.sellRules.size() - SHOWN) + " more…", null, pl -> {}));
+                break;
+            }
             Material m = en.getKey();
             Employee.SellRule r = en.getValue();
-            ItemStack it = icon(m.isItem() ? m : Material.PAPER, "<white>" + Items.name(m), List.of(
-                    "<gray>" + capital(r.describe()) + ".",
-                    "<gray>Sold in the last 24h: <white>" + e.soldToday(m),
-                    "<gray>Price now: <green>" + Msg.money(plugin.market().priceNow(e.owner, m) * 64) + "</green> <gray>a stack",
-                    "", "<yellow>Click to change or remove"));
-            button(slot++, it, (p, c) -> new SellItemMenu(plugin, e, m, this).open(p));
+            b.add(Dialogs.button("<white>Sells: " + Items.name(m), "<gray>" + capital(r.describe()) + ".\n<gray>Sold in the last 24h: <white>"
+                    + e.soldToday(m) + "\n<gray>Price now: <green>" + Msg.money(plugin.market().priceNow(e.owner, m) * 64) + "</green> a stack",
+                    pl -> new SellItemMenu(plugin, e, m, this).open(pl)));
         }
-
-        button(36, icon(Material.CHEST, "<gold>Never sells →", List.of("<gray>Always kept.")), null);
-        slot = 37;
+        int shownNever = 0;
         for (Material m : new ArrayList<>(e.neverSell)) {
-            if (slot > 44) break;
-            button(slot++, icon(m.isItem() ? m : Material.PAPER, "<white>" + Items.name(m), List.of("<gold>Never sold.", "",
-                    "<yellow>Click to take it off this list")), (p, c) -> {
+            if (shownNever++ >= SHOWN) {
+                b.add(Dialogs.button("<gray>and " + (e.neverSell.size() - SHOWN) + " more…", null, pl -> {}));
+                break;
+            }
+            b.add(Dialogs.button("<gold>Never sells: " + Items.name(m), "<gray>Always kept. <yellow>Click to take it off this list.", pl -> {
                 e.neverSell.remove(m);
                 plugin.manager().markDirty();
-                redraw();
-            });
+                open(pl);
+            }));
         }
-        button(45, back(), (p, c) -> back.open(p));
+        Dialogs.show(plugin, p, "<gold>" + e.name + "</gold> <gray>· selling", lines, b, 3, Dialogs.back(pl -> back.open(pl)));
     }
 
     /** What the employee has in storage and its backpack, most first: the likeliest things to sell or keep. */

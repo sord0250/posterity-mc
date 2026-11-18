@@ -89,6 +89,7 @@ public final class HireDialog {
         buttons.add(Dialogs.button("<white>Pick another job", "<gray>See every job and what each one asks for.",
                 pl -> HireMenu.forVillager(plugin, v).open(pl)));
 
-        Dialogs.show(plugin, p, who + " <gray>· " + job.display(), lines, buttons, buttons.size() >= 3 ? 3 : buttons.size(), "Not now");
+        Dialogs.show(plugin, p, who + " <gray>· " + job.display(), lines, buttons, buttons.size() >= 3 ? 3 : buttons.size(),
+                Dialogs.close("Not now"));
     }
 }

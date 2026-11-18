@@ -47,7 +47,8 @@ public abstract class Menu implements InventoryHolder {
         return true;
     }
 
-    public final void open(Player p) {
+    /** Opens the menu. A dialog-based menu (e.g. {@link EmployeeMenu}) overrides this instead of using the chest inventory. */
+    public void open(Player p) {
         openFor(p);
         redraw();
         p.openInventory(inventory);

@@ -322,6 +322,14 @@ public final class EmployeeManager {
         return out;
     }
 
+    /** How many employees (anyone's) are tagged with this kingdom (PosterityKingdoms). */
+    public long countInKingdom(String kingdom) {
+        if (kingdom == null) return 0;
+        long n = 0;
+        for (Employee e : employees.values()) if (kingdom.equalsIgnoreCase(e.kingdom)) n++;
+        return n;
+    }
+
     /**
      * Finds an employee by name for a command sender: their own first; admins
      * may also name anyone's (as "Name" if unique, or "Owner:Name").

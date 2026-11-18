@@ -2,11 +2,13 @@ package site.remotearc.employees.gui;
 
 import net.kyori.adventure.text.Component;
 import org.bukkit.Material;
+import org.bukkit.entity.Player;
 import site.remotearc.employees.ArcEmployees;
 import site.remotearc.employees.Employee;
 import site.remotearc.employees.util.Items;
 import site.remotearc.employees.util.Msg;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /** One item an employee sells: its stock, share and daily limit, or take it off the list. */
@@ -21,50 +23,55 @@ final class SellItemMenu extends Menu {
     private final Menu back;
 
     SellItemMenu(ArcEmployees plugin, Employee e, Material m, Menu back) {
-        super(plugin, 3, Component.text(e.name + ": " + Items.name(m)));
+        super(plugin, 1, Component.empty());
         this.e = e;
         this.m = m;
         this.back = back;
     }
 
     @Override
-    protected void draw() {
-        for (int s = 0; s < 27; s++) button(s, filler(), null);
+    protected void draw() {}
+
+    @Override
+    public void open(Player p) {
         Employee.SellRule r = e.sellRules.get(m);
-        if (r == null) return;   // taken off the list meanwhile
-        button(4, icon(m.isItem() ? m : Material.PAPER, "<white>" + Items.name(m), List.of(
-                "<gray>" + r.describe() + ".",
-                "<gray>Sold in the last 24h: <white>" + e.soldToday(m),
-                "<gray>Price now: <green>" + Msg.money(plugin.market().priceNow(e.owner, m) * 64) + "</green> <gray>a stack")), null);
-        button(10, icon(Material.CHEST, "<aqua>Keep in storage: <white>" + (r.keep() == 0 ? "none" : r.keep()), List.of(
-                "<gray>Stock it fills up first; it only sells", "<gray>beyond this (and sells down any extra).",
-                "", "<yellow>Left-click: more  <yellow>Right-click: less")), (p, c) -> set(new Employee.SellRule(step(KEEPS, r.keep(), !c.isRightClick()), r.percent(), r.daily())));
-        button(12, icon(Material.EMERALD, "<aqua>Share to sell: <white>" + r.percent() + "%", List.of(
-                "<gray>Of what's beyond the stock; the rest", "<gray>is stored.",
-                "", "<yellow>Left-click: more  <yellow>Right-click: less")), (p, c) -> set(new Employee.SellRule(r.keep(), step(PERCENTS, r.percent(), c.isRightClick()), r.daily())));
-        button(14, icon(Material.CLOCK, "<aqua>Most per day: <white>" + (r.daily() == 0 ? "no limit" : r.daily()), List.of(
-                "<gray>Never sells more than this in 24 hours.",
-                "", "<yellow>Left-click: more  <yellow>Right-click: less")), (p, c) -> set(new Employee.SellRule(r.keep(), r.percent(), step(DAILY, r.daily(), !c.isRightClick()))));
-        button(16, icon(Material.LIME_DYE, "<green>Sell all of it", List.of("<gray>No stock, no share, no limit.", "", "<yellow>Click")),
-                (p, c) -> set(Employee.SellRule.ALL));
-        button(21, icon(Material.BARRIER, "<red>Stop selling it", List.of("<gray>Takes it off the Sells list.", "", "<yellow>Click")), (p, c) -> {
+        if (r == null) {   // taken off the list meanwhile
+            back.open(p);
+            return;
+        }
+        List<String> lines = new ArrayList<>();
+        lines.add("<white>" + Items.name(m) + "</white> <gray>· " + r.describe() + "\n<gray>Sold in the last 24h: <white>"
+                + e.soldToday(m) + "</white> · Price now: <green>" + Msg.money(plugin.market().priceNow(e.owner, m) * 64) + "</green> a stack");
+
+        List<Dialogs.Button> b = new ArrayList<>();
+        b.add(Dialogs.button("<aqua>Keep in storage: <white>" + (r.keep() == 0 ? "none" : r.keep()) + " <aqua>+",
+                "<gray>Stock it fills up first; only sells beyond this.", pl -> set(pl, new Employee.SellRule(step(KEEPS, r.keep(), true), r.percent(), r.daily()))));
+        b.add(Dialogs.button("<aqua>Keep in storage -", null, pl -> set(pl, new Employee.SellRule(step(KEEPS, r.keep(), false), r.percent(), r.daily()))));
+        b.add(Dialogs.button("<aqua>Share to sell: <white>" + r.percent() + "% <aqua>+", "<gray>Of what's beyond the stock; the rest is stored.",
+                pl -> set(pl, new Employee.SellRule(r.keep(), step(PERCENTS, r.percent(), true), r.daily()))));
+        b.add(Dialogs.button("<aqua>Share to sell -", null, pl -> set(pl, new Employee.SellRule(r.keep(), step(PERCENTS, r.percent(), false), r.daily()))));
+        b.add(Dialogs.button("<aqua>Most per day: <white>" + (r.daily() == 0 ? "no limit" : r.daily()) + " <aqua>+",
+                "<gray>Never sells more than this in 24 hours.", pl -> set(pl, new Employee.SellRule(r.keep(), r.percent(), step(DAILY, r.daily(), true)))));
+        b.add(Dialogs.button("<aqua>Most per day -", null, pl -> set(pl, new Employee.SellRule(r.keep(), r.percent(), step(DAILY, r.daily(), false)))));
+        b.add(Dialogs.button("<green>Sell all of it", "<gray>No stock, no share, no limit.", pl -> set(pl, Employee.SellRule.ALL)));
+        b.add(Dialogs.button("<red>Stop selling it", "<gray>Takes it off the Sells list.", pl -> {
             e.sellRules.remove(m);
             plugin.manager().markDirty();
-            back.open(p);
-        });
-        button(23, icon(Material.IRON_BARS, "<gold>Never sell it", List.of("<gray>Moves it to Never sells: always kept,", "<gray>even with 'sell everything' on.", "", "<yellow>Click")), (p, c) -> {
+            back.open(pl);
+        }));
+        b.add(Dialogs.button("<gold>Never sell it", "<gray>Moves it to Never sells: always kept, even with 'sell everything' on.", pl -> {
             e.sellRules.remove(m);
             e.neverSell.add(m);
             plugin.manager().markDirty();
-            back.open(p);
-        });
-        button(18, back(), (p, c) -> back.open(p));
+            back.open(pl);
+        }));
+        Dialogs.show(plugin, p, "<gold>" + e.name + "</gold> <gray>· " + Items.name(m), lines, b, 2, Dialogs.back(pl -> back.open(pl)));
     }
 
-    private void set(Employee.SellRule rule) {
+    private void set(Player p, Employee.SellRule rule) {
         e.sellRules.put(m, rule);
         plugin.manager().markDirty();
-        redraw();
+        open(p);
     }
 
     /** The next value up (or down) a list, wrapping round. */

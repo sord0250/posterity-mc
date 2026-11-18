@@ -1,13 +1,12 @@
 package site.remotearc.employees.gui;
 
 import net.kyori.adventure.text.Component;
-import org.bukkit.Material;
+import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.entity.Player;
 import site.remotearc.employees.ArcEmployees;
 import site.remotearc.employees.Employee;
 import site.remotearc.employees.HomeSites;
 import site.remotearc.employees.build.HomeCatalog;
-
-import org.bukkit.inventory.ItemStack;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,7 +14,7 @@ import java.util.List;
 /** An employee's home: where it lives, and the NPC Homes catalog to pick a house from. */
 public final class HomeMenu extends Menu {
 
-    private static final int PER_PAGE = 36;
+    private static final int PER_PAGE = 10;
 
     private final Employee e;
     private final Menu back;
@@ -28,7 +27,7 @@ public final class HomeMenu extends Menu {
     }
 
     public HomeMenu(ArcEmployees plugin, Employee e, Menu back, int page, boolean mine) {
-        super(plugin, 6, Component.text(e.name + "'s home" + (mine ? ": my houses" : "")));
+        super(plugin, 1, Component.empty());
         this.e = e;
         this.back = back;
         this.page = page;
@@ -36,122 +35,100 @@ public final class HomeMenu extends Menu {
     }
 
     @Override
-    protected void draw() {
+    protected void draw() {}
+
+    @Override
+    public void open(Player p) {
         if (!plugin.manager().all().contains(e)) return;
-        for (int s = 0; s < 9; s++) button(s, filler(), null);
-        for (int s = 45; s < 54; s++) button(s, filler(), null);
+        List<String> lines = new ArrayList<>();
+        lines.add(HomeSites.describe(plugin, e));
+        lines.add("<gray>Pick a house below and it's placed where you stand, as ghost blocks you can turn and move."
+                + " Once it's built, " + e.name + " moves in.\n<dark_gray>Built it by hand already? Look at its bed and use"
+                + " /employees house " + e.name + ".");
 
-        List<String> about = new ArrayList<>();
-        about.add(HomeSites.describe(plugin, e));
-        about.add("");
-        about.addAll(wrap("<gray>", "Pick a house below and it's placed where you stand, as ghost blocks"
-                + " you can turn and move. Once it's built, " + e.name + " moves in.", 36));
-        about.add("");
-        about.addAll(wrap("<dark_gray>", "Built it by hand already? Look at its bed and use /employees house " + e.name + ".", 36));
-        button(4, icon(e.house != null ? Material.RED_BED : e.homeSite != null ? Material.SCAFFOLDING : Material.WHITE_BED,
-                "<gold>" + e.name + "'s home", about), null);
-
-        // Tabs: the catalog, the owner's own houses, and uploading one.
+        List<Dialogs.Button> b = new ArrayList<>();
         List<java.io.File> own = plugin.homeCatalog().personal(e.owner);
-        ItemStack catTab = icon(Material.BOOKSHELF, "<aqua>NPC Homes catalog", List.of("<gray>Houses picked by the server's admins.",
-                "", mine ? "<yellow>Click to see them" : "<green>Showing"));
-        button(2, mine ? catTab : glow(catTab), (p, c) -> new HomeMenu(plugin, e, back, 0, false).open(p));
-        ItemStack mineTab = icon(Material.CHEST, "<aqua>My houses (" + own.size() + ")", List.of("<gray>Houses you uploaded yourself.",
-                "<gray>Only you see them.", "", mine ? "<green>Showing" : "<yellow>Click to see them"));
-        button(6, mine ? glow(mineTab) : mineTab, (p, c) -> new HomeMenu(plugin, e, back, 0, true).open(p));
-        button(8, icon(Material.WRITABLE_BOOK, "<aqua>Upload your own house", List.of("<gray>From your computer: a .schem,",
-                "<gray>.litematic, .nbt or .schematic file", "<gray>with a bed and a door.", "", "<yellow>Click for an upload link")), (p, c) -> {
-            if (!p.getUniqueId().equals(e.owner)) {   // a manager or admin: houses they upload would be theirs, not the owner's
-                p.sendMessage(net.kyori.adventure.text.Component.text("Only " + e.ownerName() + " can add houses to their own list.",
-                        net.kyori.adventure.text.format.NamedTextColor.RED));
+        b.add(Dialogs.button(mine ? "<white>NPC Homes catalog" : "<green>NPC Homes catalog (showing)",
+                "<gray>Houses picked by the server's admins.", pl -> new HomeMenu(plugin, e, back, 0, false).open(pl)));
+        b.add(Dialogs.button(mine ? "<green>My houses (" + own.size() + ") (showing)" : "<white>My houses (" + own.size() + ")",
+                "<gray>Houses you uploaded yourself. Only you see them.", pl -> new HomeMenu(plugin, e, back, 0, true).open(pl)));
+        b.add(Dialogs.button("<aqua>Upload your own house", "<gray>From your computer: a .schem, .litematic, .nbt or .schematic"
+                + " file with a bed and a door.", pl -> {
+            if (!pl.getUniqueId().equals(e.owner)) {
+                pl.sendMessage(Component.text("Only " + e.ownerName() + " can add houses to their own list.", NamedTextColor.RED));
                 return;
             }
-            p.closeInventory();
-            run(p, "homes upload");
-        });
+            run(pl, "homes upload");
+        }));
 
         int from = page * PER_PAGE;
         if (mine) {
-            for (int i = 0; i < PER_PAGE && from + i < own.size(); i++) {
+            for (int i = 0; from + i < own.size() && i < PER_PAGE; i++) {
                 String name = HomeCatalog.personalName(own.get(from + i).getName());
-                button(9 + i, icon(Material.PAPER, "<aqua>" + Describe.esc(name), List.of("<gray>One of your own houses.", "",
-                        "<yellow>Click to place it where you stand", "<gray>Shift-click to delete it")), (p, c) -> {
-                    if (c.isShiftClick()) {
-                        if (!p.getUniqueId().equals(e.owner)) return;   // only the owner deletes their houses
-                        new ConfirmMenu(plugin, "Delete " + name + "?", "<red>Yes, delete my house", pl -> {
-                            run(pl, "homes forget " + name);
-                            new HomeMenu(plugin, e, back, 0, true).open(pl);
-                        }, this::open).open(p);
-                        return;
-                    }
-                    p.closeInventory();
-                    run(p, "house " + ref(p, e) + " style mine:" + name);
-                });
+                b.add(Dialogs.button("<white>" + Describe.esc(name), "<gray>One of your own houses.", pl -> ownHouse(pl, name)));
             }
-            if (own.isEmpty()) {
-                button(22, icon(Material.PAPER, "<yellow>No houses of your own yet", List.of(
-                        "<gray>Click <white>Upload your own house</white> above", "<gray>(or /employees homes upload).")), null);
+            if (own.isEmpty()) lines.add("<yellow>No houses of your own yet: Upload your own house above"
+                    + " (or /employees homes upload).");
+            if (page > 0) b.add(Dialogs.button("<yellow>Previous page", null, pl -> new HomeMenu(plugin, e, back, page - 1, true).open(pl)));
+            if (from + PER_PAGE < own.size()) b.add(Dialogs.button("<yellow>Next page", null, pl -> new HomeMenu(plugin, e, back, page + 1, true).open(pl)));
+        } else {
+            List<HomeCatalog.Entry> homes = plugin.homeCatalog().list();
+            for (int i = 0; from + i < homes.size() && i < PER_PAGE; i++) {
+                HomeCatalog.Entry h = homes.get(from + i);
+                StringBuilder hover = new StringBuilder();
+                if (!h.style().isEmpty()) hover.append("<gray>Style: <white>").append(Describe.esc(h.style()));
+                if (!h.description().isEmpty()) {
+                    if (!hover.isEmpty()) hover.append('\n');
+                    hover.append("<gray>").append(Describe.esc(h.description()));
+                }
+                b.add(Dialogs.button("<white>" + Describe.esc(h.name()), hover.toString(), pl -> {
+                    run(pl, "house " + ref(pl, e) + " style " + h.id());
+                }));
             }
-            if (back != null) button(45, back(), (p, c) -> back.open(p));
-            if (page > 0) button(48, icon(Material.ARROW, "<yellow>Previous page", List.of()), (p, c) -> new HomeMenu(plugin, e, back, page - 1, true).open(p));
-            if (from + PER_PAGE < own.size()) button(50, icon(Material.ARROW, "<yellow>Next page", List.of()), (p, c) -> new HomeMenu(plugin, e, back, page + 1, true).open(p));
-            drawSiteButtons();
-            return;
+            if (homes.isEmpty()) lines.add("<yellow>No houses in the catalog yet: an admin adds them with"
+                    + " /employees homes upload catalog, or upload one of your own above.");
+            if (page > 0) b.add(Dialogs.button("<yellow>Previous page", null, pl -> new HomeMenu(plugin, e, back, page - 1).open(pl)));
+            if (from + PER_PAGE < homes.size()) b.add(Dialogs.button("<yellow>Next page", null, pl -> new HomeMenu(plugin, e, back, page + 1).open(pl)));
         }
 
-        List<HomeCatalog.Entry> homes = plugin.homeCatalog().list();
-        for (int i = 0; i < PER_PAGE && from + i < homes.size(); i++) {
-            HomeCatalog.Entry h = homes.get(from + i);
-            List<String> lore = new ArrayList<>();
-            if (!h.style().isEmpty()) lore.add("<gray>Style: <white>" + Describe.esc(h.style()));
-            if (!h.description().isEmpty()) lore.addAll(wrap("<gray>", Describe.esc(h.description()), 36));
-            lore.add("");
-            lore.add("<yellow>Click to place it where you stand");
-            button(9 + i, icon(h.icon(), "<aqua>" + Describe.esc(h.name()), lore), (p, c) -> {
-                p.closeInventory();
-                run(p, "house " + ref(p, e) + " style " + h.id());
-            });
-        }
-        if (homes.isEmpty()) {
-            button(22, icon(Material.BARRIER, "<yellow>No houses in the catalog yet", List.of(
-                    "<gray>An admin adds them with", "<white>/employees homes upload catalog", "", "<gray>Or upload one of your own above.")), null);
-        }
+        siteButtons(b);
+        Dialogs.Button backBtn = back != null ? Dialogs.back(pl -> back.open(pl)) : Dialogs.close("Done");
 
-        if (back != null) button(45, back(), (p, c) -> back.open(p));
-        if (page > 0) button(48, icon(Material.ARROW, "<yellow>Previous page", List.of()), (p, c) -> new HomeMenu(plugin, e, back, page - 1).open(p));
-        if (from + PER_PAGE < homes.size()) button(50, icon(Material.ARROW, "<yellow>Next page", List.of()), (p, c) -> new HomeMenu(plugin, e, back, page + 1).open(p));
-        drawSiteButtons();
+        Dialogs.show(plugin, p, "<gold>" + e.name + "'s home" + (mine ? " <gray>· my houses" : ""), lines, b, 2, backBtn);
     }
 
-    /** Bottom row: who builds the home site, and moving out. */
-    private void drawSiteButtons() {
+    /** Placing or deleting one of the owner's own uploaded houses. */
+    private void ownHouse(Player p, String name) {
+        List<Dialogs.Button> b = new ArrayList<>();
+        b.add(Dialogs.button("<green>Place it here", null, pl -> run(pl, "house " + ref(pl, e) + " style mine:" + name)));
+        if (p.getUniqueId().equals(e.owner)) {
+            b.add(Dialogs.button("<red>Delete it", null, pl -> new ConfirmMenu(plugin, "Delete " + name + "?", "<red>Yes, delete my house", x -> {
+                run(x, "homes forget " + name);
+            }, x -> this.open(x)).open(pl)));
+        }
+        Dialogs.show(plugin, p, "<gold>" + Describe.esc(name), List.of(), b, 1, Dialogs.back(this::open));
+    }
+
+    /** Who builds the home site, and moving out. */
+    private void siteButtons(List<Dialogs.Button> b) {
         boolean building = e.homeSite != null && e.siteBed != null
                 && (e.house == null || !e.house.bed.equals(e.siteBed));
         if (building) {
-            button(47, icon(Material.GLASS, "<aqua>Build it yourself", List.of("<gray>Shows the house as ghost blocks", "<gray>to build over.",
-                    "", "<yellow>Click to show it")), (p, c) -> {
-                p.closeInventory();
-                run(p, "house " + ref(p, e) + " preview");
-            });
-            button(49, icon(Material.IRON_PICKAXE, "<aqua>Have a builder build it", List.of("<gray>One of your builders builds it",
-                    "<gray>with materials from your storage.", "", "<yellow>Click to pick a builder")), (p, c) -> {
-                p.closeInventory();
-                run(p, "house " + ref(p, e) + " builder");
-            });
-            button(51, icon(e.selfBuild ? Material.LIME_DYE : Material.GRAY_DYE, "<aqua>" + e.name + " builds it themself: "
-                    + (e.selfBuild ? "<green>on" : "<gray>off"), List.of("<gray>A minute every few minutes, and", "<gray>whenever their job has nothing",
-                    "<gray>to do. Slow, but free.", "", "<yellow>Click to turn " + (e.selfBuild ? "off" : "on"))), (p, c) -> {
-                run(p, "house " + ref(p, e) + " self " + (e.selfBuild ? "off" : "on"));
-                redraw();
-            });
+            b.add(Dialogs.button("<aqua>Build it yourself", "<gray>Shows the house as ghost blocks to build over.",
+                    pl -> run(pl, "house " + ref(pl, e) + " preview")));
+            b.add(Dialogs.button("<aqua>Have a builder build it", "<gray>One of your builders builds it with materials from your storage.",
+                    pl -> run(pl, "house " + ref(pl, e) + " builder")));
+            b.add(Dialogs.button("<aqua>" + e.name + " builds it themself: " + (e.selfBuild ? "<green>on" : "<gray>off"),
+                    "<gray>A minute every few minutes, and whenever their job has nothing to do. Slow, but free.", pl -> {
+                run(pl, "house " + ref(pl, e) + " self " + (e.selfBuild ? "off" : "on"));
+                open(pl);
+            }));
         }
         if (e.homeSite != null || e.house != null) {
-            button(53, icon(Material.TNT_MINECART, "<red>Move out", List.of("<gray>" + e.name + " leaves their home (or home site)",
-                    "<gray>and is homeless again.")), (p, c) -> new ConfirmMenu(plugin, "Move " + e.name + " out?",
-                    "<red>Yes, move them out", pl -> {
-                pl.closeInventory();
-                run(pl, "house " + ref(pl, e) + " clear");
-            }, this::open).open(p));
+            b.add(Dialogs.button("<red>Move out", "<gray>" + e.name + " leaves their home (or home site) and is homeless again.",
+                    pl -> new ConfirmMenu(plugin, "Move " + e.name + " out?", "<red>Yes, move them out", x -> {
+                run(x, "house " + ref(x, e) + " clear");
+            }, this::open).open(pl)));
         }
     }
 }

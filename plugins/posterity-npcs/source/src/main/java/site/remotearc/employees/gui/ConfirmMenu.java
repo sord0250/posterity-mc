@@ -1,7 +1,5 @@
 package site.remotearc.employees.gui;
 
-import net.kyori.adventure.text.Component;
-import org.bukkit.Material;
 import org.bukkit.entity.Player;
 import site.remotearc.employees.ArcEmployees;
 
@@ -9,23 +7,25 @@ import java.util.List;
 import java.util.function.Consumer;
 
 /** A yes/no prompt. */
-final class ConfirmMenu extends Menu {
+final class ConfirmMenu {
 
+    private final ArcEmployees plugin;
+    private final String title;
     private final String yesLabel;
     private final Consumer<Player> onYes;
     private final Consumer<Player> onNo;
 
+    /** {@code title} is shown as plain text (no MiniMessage tags are read from it); {@code yesLabel} may use them. */
     ConfirmMenu(ArcEmployees plugin, String title, String yesLabel, Consumer<Player> onYes, Consumer<Player> onNo) {
-        super(plugin, 3, Component.text(title));
+        this.plugin = plugin;
+        this.title = title;
         this.yesLabel = yesLabel;
         this.onYes = onYes;
         this.onNo = onNo;
     }
 
-    @Override
-    protected void draw() {
-        for (int s = 0; s < 27; s++) button(s, filler(), null);
-        button(11, icon(Material.LIME_CONCRETE, yesLabel, List.of()), (p, c) -> onYes.accept(p));
-        button(15, icon(Material.RED_CONCRETE, "<gray>Cancel", List.of()), (p, c) -> onNo.accept(p));
+    void open(Player p) {
+        Dialogs.show(plugin, p, Describe.esc(title), List.of(), List.of(Dialogs.button(yesLabel, null, onYes)), 1,
+                Dialogs.button("<gray>Cancel", null, onNo));
     }
 }

@@ -8,7 +8,7 @@ softdepend: [Vault, VirtualChests, Essentials, WorldEdit, CoreProtect, ArcEstate
 commands:
   employees:
     description: Manage your employees.
-    usage: /employees [help|hire|list|info|area|storage|filter|supply|build|blueprints|herd|skin|rename|pause|resume|move|tp|pay|fire]
+    usage: /employees [help|hire|list|info|area|storage|filter|supply|build|blueprints|herd|skin|rename|pause|resume|move|fire]
     aliases: [emp, staff, arcemployees]
   sort:
     description: Sort nearby chests (and virtual chests) by category, put things away, tidy.

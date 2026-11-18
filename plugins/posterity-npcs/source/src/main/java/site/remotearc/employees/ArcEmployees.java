@@ -45,6 +45,7 @@ public final class ArcEmployees extends JavaPlugin {
     private site.remotearc.employees.board.Links links;
     private site.remotearc.employees.board.Avatars avatars;
     private VillagerHiring villagerHiring;
+    private Greeter greeter;
 
     @Override
     public void onEnable() {
@@ -69,6 +70,13 @@ public final class ArcEmployees extends JavaPlugin {
 
         blueprints = new Blueprints(this);
         homeCatalog = new site.remotearc.employees.build.HomeCatalog(this);
+        if (getServer().getPluginManager().isPluginEnabled("WorldEdit")) {
+            try {
+                site.remotearc.employees.build.StarterHouses.seedIfEmpty(this);
+            } catch (NoClassDefFoundError | RuntimeException ex) {
+                getLogger().warning("Couldn't seed starter houses: " + ex);
+            }
+        }
         homeSites = new HomeSites(this);
         uploads = new site.remotearc.employees.build.Uploads(this);
         chestGroups = new ChestGroups(this);
@@ -95,6 +103,8 @@ public final class ArcEmployees extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new SellMenu.Listener(this), this);
         avatars = new site.remotearc.employees.board.Avatars(this);
         avatars.start();
+        greeter = new Greeter(this);
+        greeter.start();
         uploads.start();
         links = new site.remotearc.employees.board.Links(this);
         getServer().getPluginManager().registerEvents(links, this);
@@ -190,6 +200,7 @@ public final class ArcEmployees extends JavaPlugin {
         if (boards != null) boards.stop();
         if (market != null) market.stop();
         if (avatars != null) avatars.stop();
+        if (greeter != null) greeter.stop();
         if (uploads != null) uploads.stop();
         if (ledger != null) ledger.stop();
         if (villagerHiring != null) villagerHiring.stop();
@@ -285,6 +296,7 @@ public final class ArcEmployees extends JavaPlugin {
     public Market market() { return market; }
     public site.remotearc.employees.board.Links links() { return links; }
     public site.remotearc.employees.board.Avatars avatars() { return avatars; }
+    public Greeter greeter() { return greeter; }
     public VillagerHiring villagerHiring() { return villagerHiring; }
 
     /**
@@ -297,5 +309,15 @@ public final class ArcEmployees extends JavaPlugin {
         ArcEmployees p = getPlugin(ArcEmployees.class);
         if (!p.isEnabled() || p.villagerHiring == null) return 0;
         return p.villagerHiring.settle(founder, core, kingdom);
+    }
+
+    /**
+     * Called by PosterityKingdoms, by reflection, to show how many NPCs a
+     * kingdom has on its info screen. Neither plugin needs the other.
+     */
+    public static int employeesInKingdom(String kingdom) {
+        ArcEmployees p = getPlugin(ArcEmployees.class);
+        if (!p.isEnabled() || p.manager == null) return 0;
+        return (int) p.manager.countInKingdom(kingdom);
     }
 }

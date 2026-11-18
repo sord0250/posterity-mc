@@ -36,13 +36,27 @@ public final class Dialogs {
         return new Button(label, hover, onClick);
     }
 
+    /** A "Back" button: use as a dialog's {@code exit} too, so pressing escape goes back a screen instead of just closing. */
+    public static Button back(Consumer<Player> onBack) {
+        return new Button("<yellow>Back", null, onBack);
+    }
+
+    /** A plain close button for a screen with nothing to go back to (the root card, a hire prompt). */
+    public static Button close(String label) {
+        return new Button(label, null, pl -> {});
+    }
+
     /**
      * Shows a dialog: {@code title} on top, each of {@code lines} as a block of
-     * text (MiniMessage), then the buttons in {@code columns} columns, and a
-     * close button at the bottom ({@code closeLabel}, or none if null).
+     * text (MiniMessage), then the buttons in {@code columns} columns. Paper
+     * always renders {@code exit} as its own extra button (so pass the same
+     * button that's already in {@code buttons} and you'll see it twice) - use
+     * it only when there's a real "back" target distinct from every button
+     * already on screen, and pass null when {@code buttons} already has its
+     * own single way out (escape then just closes, same as clicking it).
+     * {@code buttons} itself must never be empty: Paper rejects that outright.
      */
-    public static void show(ArcEmployees plugin, Player p, String title, List<String> lines, List<Button> buttons, int columns,
-                            String closeLabel) {
+    public static void show(ArcEmployees plugin, Player p, String title, List<String> lines, List<Button> buttons, int columns, Button exit) {
         List<DialogBody> body = new ArrayList<>();
         for (String line : lines) {
             if (line == null) continue;
@@ -51,15 +65,14 @@ public final class Dialogs {
         int width = columns <= 1 ? 300 : columns == 2 ? 150 : 100;
         List<ActionButton> actions = new ArrayList<>();
         for (Button b : buttons) actions.add(action(plugin, b, width));
-        ActionButton exit = closeLabel == null ? null
-                : ActionButton.create(Msg.parse(closeLabel), null, 200, null);
+        ActionButton exitBtn = exit == null ? null : action(plugin, exit, 200);
         Dialog dialog = Dialog.create(f -> f.empty()
                 .base(DialogBase.builder(Msg.parse(title))
                         .canCloseWithEscape(true)
                         .afterAction(DialogBase.DialogAfterAction.CLOSE)
                         .body(body)
                         .build())
-                .type(DialogType.multiAction(actions).columns(Math.max(1, columns)).exitAction(exit).build()));
+                .type(DialogType.multiAction(actions).columns(Math.max(1, columns)).exitAction(exitBtn).build()));
         p.closeInventory();
         p.showDialog(dialog);
     }

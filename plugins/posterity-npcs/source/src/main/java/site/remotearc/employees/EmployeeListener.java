@@ -93,9 +93,10 @@ final class EmployeeListener implements Listener {
         return ("aeiou".indexOf(n.charAt(0)) >= 0 ? "an " : "a ") + n;
     }
 
-    /** Merchants and avatars: our other NPCs, protected like employees. */
+    /** Merchants, avatars and the Guide: our other NPCs, protected like employees. */
     private boolean isMerchant(Entity e) {
-        return (plugin.market() != null && plugin.market().isMerchant(e)) || (plugin.avatars() != null && plugin.avatars().isAvatar(e));
+        return (plugin.market() != null && plugin.market().isMerchant(e)) || (plugin.avatars() != null && plugin.avatars().isAvatar(e))
+                || (plugin.greeter() != null && plugin.greeter().isGreeter(e));
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -111,6 +112,11 @@ final class EmployeeListener implements Listener {
     @EventHandler(priority = EventPriority.LOW)
     public void onInteract(PlayerInteractEntityEvent ev) {
         Entity clicked = ev.getRightClicked();
+        if (plugin.greeter() != null && plugin.greeter().isGreeter(clicked)) {
+            ev.setCancelled(true);
+            if (ev.getHand() == EquipmentSlot.HAND) Greeter.greet(plugin, ev.getPlayer());
+            return;
+        }
         if (plugin.avatars() != null && plugin.avatars().isAvatar(clicked)) {
             ev.setCancelled(true);
             if (ev.getHand() != EquipmentSlot.HAND) return;
@@ -226,6 +232,7 @@ final class EmployeeListener implements Listener {
             if (plugin.boards() != null) plugin.boards().removeIfStray(entity);
             if (plugin.market() != null) plugin.market().removeIfStray(entity);
             if (plugin.avatars() != null) plugin.avatars().removeIfStray(entity);
+            if (plugin.greeter() != null) plugin.greeter().removeIfStray(entity);
         }
     }
 }

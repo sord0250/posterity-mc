@@ -5,6 +5,10 @@ currency-symbol: "$"
 # How many employees one player may have (admins are not limited).
 max-employees-per-player: 6
 
+# How many employees one kingdom (PosterityKingdoms) may have in total, counting everyone
+# in it, not just the one hiring (admins are not limited).
+max-employees-per-kingdom: 6
+
 # Personalities. Every employee gets one random trait when hired (the owner
 # doesn't choose it), e.g. "Absolutely loves sheep" or "Loves to swim". Now and
 # then the trait takes over: they drop their work for a minute or two (follow

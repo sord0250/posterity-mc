@@ -18,8 +18,8 @@ import java.util.UUID;
 /** /kingdom (also /kd, /kingdoms): claiming a kingdom's Core and running it. */
 final class KingdomCommand implements TabExecutor {
 
-    private static final List<String> SUBS = List.of("help", "claim", "info", "addruler", "removeruler", "leave");
-    private static final List<String> ADMIN = List.of("delete", "reload", "money");
+    private static final List<String> SUBS = List.of("help", "claim", "info", "addruler", "removeruler", "leave", "delete", "flag");
+    private static final List<String> ADMIN = List.of("money");
 
     private final PosterityKingdoms plugin;
 
@@ -53,11 +53,15 @@ final class KingdomCommand implements TabExecutor {
         switch (sub) {
             case "help" -> help(p, label);
             case "claim" -> claim(p, args);
-            case "info" -> info(p, args.length > 1 ? kingdoms().get(args[1]) : kingdoms().of(p.getUniqueId()));
+            case "info" -> {
+                if (args.length > 1) info(p, kingdoms().get(args[1]));
+                else site.remotearc.kingdom.gui.KingdomMenu.show(plugin, p);
+            }
             case "addruler" -> ruler(p, args, true);
             case "removeruler" -> ruler(p, args, false);
             case "leave" -> leave(p);
-            case "delete" -> delete(p, args);
+            case "delete" -> delete(p, args, label);
+            case "flag" -> flag(p, args);
             case "money" -> money(p, args);
             default -> help(p, label);
         }
@@ -68,13 +72,16 @@ final class KingdomCommand implements TabExecutor {
         String c = "<gold>/" + label;
         s.sendMessage(Msg.parse(c + " claim <name></white> <gray>- claim this one spot as your kingdom's Core; its first"
                 + " two NPCs arrive free to hire (with Posterity NPCs installed)"));
-        s.sendMessage(Msg.parse(c + " info [kingdom]</white> <gray>- a kingdom's owner, rulers and Core"));
+        s.sendMessage(Msg.parse(c + " info [kingdom]</white> <gray>- bare, or with no kingdom named: your own kingdom's info"
+                + " screen, with buttons for all of the above; named: another kingdom's owner, rulers and Core as plain text"));
         s.sendMessage(Msg.parse(c + " addruler | removeruler <player></white> <gray>- put someone else in charge of your"
                 + " kingdom too (they can also buy NPCs for it); owner only"));
         s.sendMessage(Msg.parse(c + " leave</white> <gray>- give up being a ruler of the kingdom you're in"));
+        s.sendMessage(Msg.parse(c + " delete [kingdom]</white> <gray>- disband your kingdom (or, for admins, anyone's)"));
+        s.sendMessage(Msg.parse(c + " flag set</white> <gray>- make the banner in your hand your kingdom's flag design (owner only)"));
+        s.sendMessage(Msg.parse(c + " flag buy</white> <gray>- a copy of your kingdom's flag for " + plugin.settings().flagEmeralds + " emeralds"));
         if (admin(s)) {
             s.sendMessage(Msg.parse(c + " money <amount></white> <gray>- give yourself money (economy stub, until merchants exist)"));
-            s.sendMessage(Msg.parse(c + " delete <kingdom></white> <gray>- disband a kingdom"));
         }
     }
 
@@ -120,10 +127,8 @@ final class KingdomCommand implements TabExecutor {
             Msg.error(s, "No such kingdom; stand in one or name one: /kingdom info <kingdom>");
             return;
         }
-        String rulers = k.rulers.isEmpty() ? "none"
-                : k.rulers.stream().map(id -> Bukkit.getOfflinePlayer(id).getName()).filter(n -> n != null).reduce((a, b) -> a + ", " + b).orElse("none");
-        s.sendMessage(Msg.parse("<gold><bold>" + Msg.esc(k.name) + "</bold></gold> <gray>· owned by " + Msg.esc(k.ownerName())
-                + " · rulers: " + Msg.esc(rulers) + " · Core at " + k.coreX + ", " + k.coreY + ", " + k.coreZ + " in " + Msg.esc(k.world)));
+        s.sendMessage(Msg.parse("<gold><bold>" + Msg.esc(k.name) + "</bold></gold> <gray>· rulers: " + Msg.esc(k.rulerNames())
+                + " · Core at " + k.coreX + ", " + k.coreY + ", " + k.coreZ + " in " + Msg.esc(k.world)));
     }
 
     private void ruler(Player p, String[] args, boolean adding) {
@@ -167,8 +172,10 @@ final class KingdomCommand implements TabExecutor {
         Msg.send(p, "<gray>You're no longer a ruler of " + Msg.esc(k.name) + ".");
     }
 
-    private void delete(Player p, String[] args) {
-        Kingdom k = args.length > 1 ? kingdoms().get(args[1]) : kingdoms().of(p.getUniqueId());
+    private void delete(Player p, String[] args, String label) {
+        boolean confirmed = args.length > 1 && args[args.length - 1].equalsIgnoreCase("confirm");
+        String name = args.length > 1 && !(confirmed && args.length == 2) ? args[1] : null;
+        Kingdom k = name != null ? kingdoms().get(name) : kingdoms().of(p.getUniqueId());
         if (k == null) {
             Msg.error(p, "Usage: /kingdom delete <kingdom>");
             return;
@@ -177,8 +184,79 @@ final class KingdomCommand implements TabExecutor {
             Msg.error(p, "Only " + Msg.esc(k.name) + "'s owner (or an admin) can disband it.");
             return;
         }
+        if (!confirmed) {
+            String rulerNote = k.rulers.isEmpty() ? "" : ", and " + k.rulers.size() + " ruler(s) lose their place in it";
+            Msg.send(p, "<yellow>Really disband " + Msg.esc(k.name) + "? Its Core stops being claimed (anyone can claim that"
+                    + " spot, or another, afterward)" + rulerNote + ". Employees already tagged with it keep showing the old"
+                    + " name. <red>This can't be undone.</red> <click:run_command:'/" + label + " delete " + Msg.esc(k.name)
+                    + " confirm'><red><u>[Disband " + Msg.esc(k.name) + "]</u></red></click>");
+            return;
+        }
         kingdoms().disband(k);
         Msg.send(p, "<gray>" + Msg.esc(k.name) + " disbanded.");
+    }
+
+    /** Sets the kingdom's flag design from a banner in hand, or buys a copy of the design already set. */
+    private void flag(Player p, String[] args) {
+        Kingdom k = kingdoms().of(p.getUniqueId());
+        if (k == null) {
+            Msg.error(p, "You're not in a kingdom.");
+            return;
+        }
+        String mode = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : "";
+        switch (mode) {
+            case "set" -> {
+                if (!admin(p) && !k.owner.equals(p.getUniqueId())) {
+                    Msg.error(p, "Only " + Msg.esc(k.name) + "'s owner can set its flag.");
+                    return;
+                }
+                org.bukkit.inventory.ItemStack hand = p.getInventory().getItemInMainHand();
+                org.bukkit.DyeColor color = bannerColor(hand.getType());
+                if (color == null || !(hand.getItemMeta() instanceof org.bukkit.inventory.meta.BannerMeta bm)) {
+                    Msg.error(p, "Hold the banner you want as " + Msg.esc(k.name) + "'s flag (made on a loom).");
+                    return;
+                }
+                k.flagBase = color;
+                k.flagPatterns.clear();
+                k.flagPatterns.addAll(bm.getPatterns());
+                kingdoms().save();
+                Msg.send(p, "<green>" + Msg.esc(k.name) + "'s flag is set.</green> <gray>Anyone can now get a copy with"
+                        + " /kingdom flag buy (" + plugin.settings().flagEmeralds + " emeralds).");
+            }
+            case "buy" -> {
+                if (k.flagBase == null) {
+                    Msg.error(p, Msg.esc(k.name) + " has no flag yet; its owner sets one with /kingdom flag set (hold a banner).");
+                    return;
+                }
+                int cost = plugin.settings().flagEmeralds;
+                if (!takeEmeralds(p, cost)) {
+                    Msg.error(p, "You need " + cost + " emeralds.");
+                    return;
+                }
+                var left = p.getInventory().addItem(k.flagItem());
+                for (var s : left.values()) p.getWorld().dropItem(p.getLocation(), s);
+                Msg.send(p, "<green>Here's " + Msg.esc(k.name) + "'s flag.</green> <gray>(" + cost + " emeralds.)");
+            }
+            default -> Msg.error(p, "Usage: /kingdom flag set (hold a banner) | buy");
+        }
+    }
+
+    private static org.bukkit.DyeColor bannerColor(org.bukkit.Material m) {
+        if (!m.name().endsWith("_BANNER")) return null;
+        try {
+            return org.bukkit.DyeColor.valueOf(m.name().substring(0, m.name().length() - "_BANNER".length()));
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+    }
+
+    /** True (and the emeralds removed) only if the player had at least {@code n}. */
+    private static boolean takeEmeralds(Player p, int n) {
+        int have = 0;
+        for (org.bukkit.inventory.ItemStack s : p.getInventory().all(org.bukkit.Material.EMERALD).values()) have += s.getAmount();
+        if (have < n) return false;
+        p.getInventory().removeItem(new org.bukkit.inventory.ItemStack(org.bukkit.Material.EMERALD, n));
+        return true;
     }
 
     /** A stand-in for a real economy: gives the sender money, until merchants (and real income) exist. */
@@ -223,6 +301,12 @@ final class KingdomCommand implements TabExecutor {
         }
         if (args.length == 2 && List.of("addruler", "removeruler").contains(args[0].toLowerCase(Locale.ROOT))) {
             return null;
+        }
+        if (args.length == 2 && args[0].equalsIgnoreCase("flag")) {
+            return List.of("set", "buy").stream().filter(o -> o.startsWith(args[1].toLowerCase(Locale.ROOT))).toList();
+        }
+        if (args.length == 3 && args[0].equalsIgnoreCase("delete")) {
+            return "confirm".startsWith(args[2].toLowerCase(Locale.ROOT)) ? List.of("confirm") : List.of();
         }
         return List.of();
     }

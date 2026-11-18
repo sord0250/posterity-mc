@@ -6,8 +6,10 @@ import org.bukkit.configuration.file.FileConfiguration;
 public final class Settings {
 
     public final String currency;
+    public final int flagEmeralds;
 
     Settings(FileConfiguration c) {
         currency = c.getString("currency-symbol", "$");
+        flagEmeralds = c.getInt("flag-emeralds", 3);
     }
 }
