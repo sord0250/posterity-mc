@@ -53,7 +53,7 @@ public final class HireDialog {
                         .append("</red> <gray>(you have ").append(c.getValue() - lack).append(")</gray>");
             }
             lines.add(list.toString());
-            lines.add("<dark_gray>The tools become theirs; the food goes in their food store. After that they eat from a pantry chest.");
+            lines.add("<dark_gray>They keep the tools to work with; the food goes in their food store. After that they eat from a pantry chest.");
         }
         VillagerHiring.Reservation r = vh.reservation(v);
         boolean mine = r != null && r.owner().equals(p.getUniqueId());

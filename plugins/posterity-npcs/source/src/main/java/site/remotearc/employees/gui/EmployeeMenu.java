@@ -248,7 +248,7 @@ public final class EmployeeMenu extends Menu {
         });
         button(49, icon(Material.BARRIER, "<red>Fire " + e.name, List.of(
                 "<gray>Their backpack is handed to you.",
-                "<gray>Wages already paid are not refunded.",
+                "<gray>The tools and food they were hired with stay theirs.",
                 "", "<yellow>Click to fire")), (p, c) -> new ConfirmMenu(plugin,
                 "Fire " + e.name + "?", "<red>Yes, fire " + e.name, pl -> {
             plugin.manager().fire(e, pl);

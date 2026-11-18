@@ -116,6 +116,7 @@ public final class Distractions {
     /** Sleeps until the night is over (the worker interrupts it when work starts). */
     static final class Sleep extends Distraction {
         private Vector bed;
+        private Pathfinder.Goal goal;
         private boolean there;
 
         Sleep() {
@@ -144,7 +145,8 @@ public final class Distractions {
         @Override
         Result step(Worker w) {
             if (bed != null && !there) {
-                Worker.Move m = walkNear(w, bed, 1.5);
+                if (goal == null) goal = Pathfinder.near(bed.getX(), bed.getY(), bed.getZ(), 1.5, 3, 2);
+                Worker.Move m = w.walk(goal, bed);   // the bed as target: the path search reaches past the work area
                 if (m == Worker.Move.MOVING) return Result.RUNNING;
                 if (m == Worker.Move.FAILED) bed = null;   // can't get home: sleeps where it is
                 there = true;

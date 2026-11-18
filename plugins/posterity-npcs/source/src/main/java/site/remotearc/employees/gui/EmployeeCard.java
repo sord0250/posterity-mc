@@ -117,6 +117,10 @@ public final class EmployeeCard {
                         Msg.error(pl, "Placed chests are turned off in the config.");
                         return;
                     }
+                    if (!plugin.estate().mayWork(e.owner, block.getWorld(), block.getX(), block.getY(), block.getZ())) {
+                        Msg.error(pl, "That chest is on someone else's land.");
+                        return;
+                    }
                     plugin.manager().setPantry(e, StorageTarget.chest(block));
                     Msg.send(pl, "<green>" + e.name + " will take their food from that "
                             + block.getType().name().toLowerCase(Locale.ROOT).replace('_', ' ') + ".</green> <gray>Keep some food in it.");

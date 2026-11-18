@@ -126,6 +126,8 @@ public final class VillagerHiring implements Listener {
         if (inHand == Material.NAME_TAG || inHand == Material.LEAD) return;
         ev.setCancelled(true);
         if (ev.getHand() != EquipmentSlot.HAND) return;
+        // Marked reserved but no longer on the books (ran out while unloaded, or the file was lost): let it go.
+        if (v.getPersistentDataContainer().has(reservedKey, PersistentDataType.STRING) && reservation(v) == null) release(v);
         String why = whyNot(p, v);
         if (why != null) {
             Msg.error(p, why);
@@ -285,8 +287,8 @@ public final class VillagerHiring implements Listener {
             walking.remove(v.getUniqueId());
             return;
         }
-        Location spot = standable(bed.clone().add(0.5, 0, 0.5));
-        if (v.getLocation().distanceSquared(spot) <= 2.5 * 2.5) {
+        Location spot = besideBed(bed);
+        if (spot == null || v.getLocation().distanceSquared(spot) <= 2.5 * 2.5) {   // nowhere to stand by it: waits where it is
             v.setAware(false);
             walking.remove(v.getUniqueId());
             return;
@@ -299,6 +301,36 @@ public final class VillagerHiring implements Listener {
             return;
         }
         v.getPathfinder().moveTo(spot, 0.6);
+    }
+
+    /** A free spot to stand right beside a bed (either half), or null. */
+    private static Location besideBed(Location bed) {
+        Block b = bed.getBlock();
+        List<Block> halves = new ArrayList<>(List.of(b));
+        if (b.getBlockData() instanceof org.bukkit.block.data.type.Bed data) {
+            org.bukkit.block.BlockFace f = data.getFacing();
+            halves.add(b.getRelative(data.getPart() == org.bukkit.block.data.type.Bed.Part.HEAD ? f.getOppositeFace() : f));
+        }
+        org.bukkit.block.BlockFace[] sides = {org.bukkit.block.BlockFace.NORTH, org.bukkit.block.BlockFace.SOUTH,
+                org.bukkit.block.BlockFace.EAST, org.bukkit.block.BlockFace.WEST};
+        for (Block half : halves) {
+            for (org.bukkit.block.BlockFace side : sides) {
+                Block feet = half.getRelative(side);
+                if (feet.isPassable() && !feet.isLiquid() && feet.getRelative(0, 1, 0).isPassable() && feet.getRelative(0, -1, 0).getType().isSolid()) {
+                    return feet.getLocation().add(0.5, 0, 0.5);
+                }
+            }
+        }
+        return null;
+    }
+
+    /** A reserved villager that died is no longer waiting for anyone. */
+    @EventHandler
+    public void onDeath(org.bukkit.event.entity.EntityDeathEvent ev) {
+        if (ev.getEntity() instanceof Villager && reserved.remove(ev.getEntity().getUniqueId()) != null) {
+            walking.remove(ev.getEntity().getUniqueId());
+            save();
+        }
     }
 
     /** The founder a kingdom settler belongs to, or null if it isn't one. */

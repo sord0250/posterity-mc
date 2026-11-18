@@ -271,7 +271,7 @@ final class EmployeesCommand implements TabExecutor {
                     case "tp" -> {
                         if (s instanceof Player p) p.teleport(e.location.clone().add(0, 0.1, 0));
                     }
-                    case "pantry", "food" -> pantry(s, e, label, args);
+                    case "pantry" -> pantry(s, e, label, args);
                     case "stalls", "stall" -> jobs.stalls(s, e, label, args);
                     case "debug" -> {
                         e.debug = args.length > 2 ? args[2].equalsIgnoreCase("on") : !e.debug;
@@ -1410,6 +1410,10 @@ final class EmployeesCommand implements TabExecutor {
     static void setPantryChest(ArcEmployees plugin, Player p, Employee e, Block b) {
         if (!plugin.settings().chestsEnabled) {
             Msg.error(p, "Placed chests are turned off in the config.");
+            return;
+        }
+        if (!plugin.estate().mayWork(e.owner, b.getWorld(), b.getX(), b.getY(), b.getZ())) {
+            Msg.error(p, "That chest is on someone else's land.");
             return;
         }
         plugin.manager().setPantry(e, StorageTarget.chest(b));

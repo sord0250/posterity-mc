@@ -81,8 +81,21 @@ public final class Food {
         return StorageTarget.describeAll(all);
     }
 
-    /** Food points waiting in its pantry (placed chests only while loaded). */
+    private record Cached(long at, double points) {}
+
+    private static final Map<java.util.UUID, Cached> PANTRY = new java.util.HashMap<>();
+
+    /** Food points waiting in its pantry (placed chests only while loaded); read at most every 5 seconds. */
     public static double inPantry(ArcEmployees plugin, Employee e) {
+        long now = System.currentTimeMillis();
+        Cached c = PANTRY.get(e.id);
+        if (c != null && now - c.at() < 5000) return c.points();
+        double v = countPantry(plugin, e);
+        PANTRY.put(e.id, new Cached(now, v));
+        return v;
+    }
+
+    private static double countPantry(ArcEmployees plugin, Employee e) {
         double sum = 0;
         for (StorageTarget t : pantries(plugin, e)) {
             ItemStack[] slots;
@@ -155,6 +168,7 @@ public final class Food {
             if (changed) e.backpack.setStorageContents(slots);
         }
         if (e.food > before) {
+            PANTRY.remove(e.id);
             if (e.isLoaded()) e.location.getWorld().playSound(e.location, Sound.ENTITY_GENERIC_EAT, 0.5f, 1f);
             plugin.manager().markDirty();
             return true;
