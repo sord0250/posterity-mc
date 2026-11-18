@@ -374,6 +374,23 @@ number, a link) is asked for in chat; type `cancel` to stop.
 
 ## Work areas
 
+**Easiest: pick it from above.** On an employee's card click **Set work area** (or **Pick it from
+above** in the Work area menu) and you leave your body: it stays standing where you were, and you
+float invisibly over the employee's site, flying about (space up, shift down) for a bird's-eye view.
+**Left-click** where you look to drop a corner; the outline stretches to wherever you look, with its
+size shown, until you **left-click** again. Quarry miners and miners then take a depth: **scroll the
+mouse wheel** (down is deeper) and left-click to confirm. **Right-click** (holding anything) goes back
+a step; **F** (swap hands) cancels. Either way you snap back into your body. Storage and pantry chests
+can be picked the same way (**Pick a chest from above** in the storage menu, **Pick from above** in
+the pantry window): left-click the chest.
+
+While out of your body you can't be hurt or hurt anything, pick things up, open anything or use
+commands, other players can't see you, and you can't float more than 96 blocks from where you
+started (nor through walls). After five minutes, on logging out, or when the server stops, you're
+put back in your body; after a crash, when you next join.
+
+Or by command:
+
 | How | Command |
 |---|---|
 | Your WorldEdit wand selection | `/emp area <name> worldedit` |

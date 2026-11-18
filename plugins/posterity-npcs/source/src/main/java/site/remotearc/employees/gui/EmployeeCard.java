@@ -51,7 +51,8 @@ public final class EmployeeCard {
         if (e.job == JobType.BUILDER) {
             b.add(Dialogs.button("<aqua>Build", "<gray>Blueprints and build controls.", pl -> new BuildMenu(plugin, e, more).open(pl)));
         } else {
-            b.add(Dialogs.button("<aqua>Work area", "<gray>Change it, show its outline, or go there.", pl -> new AreaMenu(plugin, e, more).open(pl)));
+            b.add(Dialogs.button("<aqua>Set work area", "<gray>Leave your body and fly over " + e.name + "'s site:\n<gray>click two corners to mark the area.\n<dark_gray>(Other ways, and showing it: More settings.)",
+                    pl -> OutOfBody.start(plugin, pl, e, OutOfBody.Goal.AREA)));
         }
         b.add(Dialogs.button("<aqua>Storage", "<gray>Where " + e.name + " delivers: " + Describe.esc(e.storage.describe()),
                 pl -> new StorageMenu(plugin, e, more, 0).open(pl)));
@@ -111,6 +112,8 @@ public final class EmployeeCard {
         lines.add("<gray>Now: <white>" + Describe.esc(Food.pantryName(plugin, e))
                 + (e.pantry.kind() == StorageTarget.Kind.NONE ? " <dark_gray>(where they deliver)" : ""));
         List<Dialogs.Button> b = new ArrayList<>();
+        b.add(Dialogs.button("<aqua>Pick from above", "<gray>Leave your body, fly over and click the chest.",
+                pl -> OutOfBody.start(plugin, pl, e, OutOfBody.Goal.PANTRY)));
         b.add(Dialogs.button("<aqua>Click a chest", "<gray>Then click the chest (or barrel) to use.", pl ->
                 ChestPick.ask(pl, "the chest for " + e.name + "'s food", (Block block) -> {
                     if (!plugin.settings().chestsEnabled) {
@@ -130,7 +133,7 @@ public final class EmployeeCard {
             show(plugin, pl, e);
         }));
         b.add(Dialogs.button("<yellow>Back", null, pl -> show(plugin, pl, e)));
-        Dialogs.show(plugin, p, "<gold>" + e.name + "'s pantry", lines, b, 3, null);
+        Dialogs.show(plugin, p, "<gold>" + e.name + "'s pantry", lines, b, 2, null);
     }
 
     private static String ref(Player p, Employee e) {

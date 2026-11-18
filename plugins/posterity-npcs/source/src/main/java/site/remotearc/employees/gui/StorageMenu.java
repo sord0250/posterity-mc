@@ -46,6 +46,11 @@ final class StorageMenu extends Menu {
                 back.open(p);
             });
         }
+        if (plugin.settings().chestsEnabled) {
+            button(5, icon(Material.ENDER_EYE, "<aqua>Pick a chest from above", List.of(
+                    "<gray>Leave your body, fly over and", "<gray>click the chest or barrel.", "", "<yellow>Click to leave your body")),
+                    (p, c) -> OutOfBody.start(plugin, p, e, OutOfBody.Goal.STORAGE));
+        }
         if (st.kind() == StorageTarget.Kind.VIRTUAL) {
             button(7, icon(Material.ENDER_EYE, "<aqua>Open /chest " + st.chestNumber(), List.of("", "<yellow>Click to open")),
                     (p, c) -> openThenReturn(p, () -> plugin.vchests().open(p, e.ownerPlayer(), st.chestNumber())));

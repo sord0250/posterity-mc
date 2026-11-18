@@ -83,6 +83,15 @@ final class AreaMenu extends Menu {
             p.closeInventory();
             run(p, "move " + ref(p, e));
         });
+        if (e.job != site.remotearc.employees.job.JobType.BUILDER) {
+            button(4, glow(icon(Material.ENDER_EYE, "<aqua>Pick it from above", List.of(
+                    "<gray>Leave your body and fly over the site:",
+                    "<gray>click one corner, then the other" + (e.job == site.remotearc.employees.job.JobType.QUARRY
+                            || e.job == site.remotearc.employees.job.JobType.MINER ? "," : "."),
+                    e.job == site.remotearc.employees.job.JobType.QUARRY || e.job == site.remotearc.employees.job.JobType.MINER
+                            ? "<gray>then scroll for the depth." : "",
+                    "", "<yellow>Click to leave your body"))), (p, c) -> OutOfBody.start(plugin, p, e, OutOfBody.Goal.AREA));
+        }
         button(16, icon(Material.SPYGLASS, "<aqua>Show the outline", List.of(
                 e.area == null ? "<gray>No area yet." : "<gray>" + e.area.describe() + ", y " + e.area.minY() + " to " + e.area.maxY(),
                 "", "<yellow>Click to show for 20 seconds")), (p, c) -> {

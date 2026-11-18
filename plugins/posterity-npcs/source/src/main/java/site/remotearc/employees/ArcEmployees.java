@@ -107,6 +107,7 @@ public final class ArcEmployees extends JavaPlugin {
         villagerHiring.start();
         getServer().getPluginManager().registerEvents(villagerHiring, this);
         getServer().getPluginManager().registerEvents(new site.remotearc.employees.gui.ChestPick(this), this);
+        getServer().getPluginManager().registerEvents(new site.remotearc.employees.gui.OutOfBody(this), this);
         getServer().getPluginManager().registerEvents(new site.remotearc.employees.gui.BlockPick(this), this);
         getServer().getPluginManager().registerEvents(new site.remotearc.employees.gui.BuildPicker(this), this);
         getServer().getPluginManager().registerEvents(new site.remotearc.employees.build.PlanMode(this), this);
@@ -170,6 +171,7 @@ public final class ArcEmployees extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        site.remotearc.employees.gui.OutOfBody.stopAll();   // everyone back in their bodies first
         site.remotearc.employees.build.PlanMode.stopAll();
         if (guide != null) guide.stop();
         if (trades != null) trades.stop();
