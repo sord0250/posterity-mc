@@ -35,6 +35,8 @@ public final class BuildOrder {
     public boolean breakBlocks = true;
     /** A name for this build as a hangout spot (a tavern, a park...); null means it isn't one. Off-duty employees of the same owner (or their trusted network) gather at labeled, finished builds instead of just loitering at their own post. */
     public String hangoutLabel;
+    /** Where exactly to gather, picked out of body (a random point inside each time); null: the build's own placement point. */
+    public WorkArea hangoutArea;
     /** Off while the owner previews and lines it up; the builder waits. */
     public boolean started;
     public boolean finished;
@@ -535,6 +537,7 @@ public final class BuildOrder {
             s.set("tunnel", t);
         }
         if (hangoutLabel != null) s.set("hangout-label", hangoutLabel);
+        if (hangoutArea != null) hangoutArea.save(s.createSection("hangout-area"));
         if (dismantle) s.set("dismantle", true);
         if (planned) s.set("planned", true);
         if (!follow) s.set("follow", false);
@@ -561,6 +564,7 @@ public final class BuildOrder {
         // Orders from before the ground was left out were built with it: keep building (and taking down) it.
         o.keepGround = s.contains("ground") ? "keep".equals(s.getString("ground")) : true;
         o.hangoutLabel = s.getString("hangout-label");
+        o.hangoutArea = WorkArea.load(s.getConfigurationSection("hangout-area"));
         o.dismantle = s.getBoolean("dismantle");
         o.clearAround = !"leave".equals(s.getString("around"));
         for (String t : s.getStringList("tunnel")) {

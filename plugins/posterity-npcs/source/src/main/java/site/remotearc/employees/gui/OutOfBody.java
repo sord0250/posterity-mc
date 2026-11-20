@@ -77,7 +77,7 @@ import java.util.UUID;
  */
 public final class OutOfBody implements Listener {
 
-    public enum Goal { AREA, STORAGE, PANTRY, ZONE }
+    public enum Goal { AREA, STORAGE, PANTRY, ZONE, HANGOUT }
 
     private static final int RANGE = 96;
     private static final double REACH = 160;
@@ -182,6 +182,10 @@ public final class OutOfBody implements Listener {
             Msg.error(p, "A builder's area follows its blueprint.");
             return;
         }
+        if (goal == Goal.HANGOUT && e.build == null) {
+            Msg.error(p, e.name + " has nothing built yet to pick a hangout spot for.");
+            return;
+        }
         if (p.getGameMode() == GameMode.SPECTATOR || p.isInsideVehicle() || p.isDead() || p.isSleeping()) {
             Msg.error(p, "You can't leave your body right now.");
             return;
@@ -226,6 +230,7 @@ public final class OutOfBody implements Listener {
                     case STORAGE -> "Left-click the chest " + e.name + " delivers to";
                     case PANTRY -> "Left-click the chest " + e.name + " eats from";
                     case ZONE -> "Left-click two corners of the zone " + e.name + " should leave alone";
+                    case HANGOUT -> "Left-click two corners of the hangout spot";
                 }, NamedTextColor.GRAY)));
         Msg.send(p, "<aqua>You've left your body.</aqua> <gray>Fly about (space up, shift down) and look where you mean."
                 + " <white>Left-click</white> to pick, <white>right-click</white> (holding anything) to go back a step,"
@@ -342,6 +347,9 @@ public final class OutOfBody implements Listener {
             if (look != null) cursor(p, look);
             p.sendActionBar(Msg.parse("<yellow>Left-click: first corner <dark_gray>· <gray>F: cancel"));
             if (s.goal == Goal.AREA && s.e.area != null && s.ticks % 10 == 0) outline(p, s.e.area, CURSOR, 2);   // the area as it is now
+            if (s.goal == Goal.HANGOUT && s.e.build != null && s.e.build.hangoutArea != null && s.ticks % 10 == 0) {
+                outline(p, s.e.build.hangoutArea, CURSOR, 2);   // the hangout area as it is now
+            }
             return;
         }
         BlockPos other = s.depthStep ? s.b : look == null ? null : BlockPos.of(look);
@@ -374,7 +382,7 @@ public final class OutOfBody implements Listener {
     /** The area from the first corner to {@code other}: an exact box for a zone, or as hiring would make it there (and the depth picked, if any). */
     private WorkArea build(Session s, BlockPos other) {
         World w = s.p.getWorld();
-        if (s.goal == Goal.ZONE) {
+        if (s.goal == Goal.ZONE || s.goal == Goal.HANGOUT) {
             int low = Math.min(s.a.y(), other.y()), high = Math.max(s.a.y(), other.y());
             return WorkArea.of(w.getName(), s.a.x(), low, s.a.z(), other.x(), high, other.z());
         }
@@ -448,7 +456,7 @@ public final class OutOfBody implements Listener {
     }
 
     private void back(Session s) {
-        if (s.goal != Goal.AREA && s.goal != Goal.ZONE) return;
+        if (s.goal != Goal.AREA && s.goal != Goal.ZONE && s.goal != Goal.HANGOUT) return;
         if (s.depthStep) {
             s.depthStep = false;
             s.b = null;
@@ -495,6 +503,12 @@ public final class OutOfBody implements Listener {
             e.worker.interrupt();
             String what = e.job == JobType.BODYGUARD ? "leaves mobs alone" : "won't work";
             Msg.send(p, "<green>" + e.name + " " + what + " in <white>" + area.describe() + "</white> (y " + area.minY() + " to " + area.maxY() + ") now.");
+        } else if (goal == Goal.HANGOUT) {
+            e.build.hangoutArea = area;
+            plugin.manager().markDirty();
+            Msg.send(p, "<green>Hangout spot set: <white>" + area.describe() + "</white> (y " + area.minY() + " to " + area.maxY() + ")."
+                    + (e.build.hangoutLabel == null ? " <gray>Give it a name too with the Hangout spot button, or /employees build "
+                        + e.name + " label \\<text>, so it actually counts as one." : ""));
         } else {
             plugin.manager().setArea(e, area);
             Msg.send(p, "<green>" + e.name + " now works in <white>" + area.describe() + "</white> (y " + area.minY() + " to " + area.maxY() + ").");

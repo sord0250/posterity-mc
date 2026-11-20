@@ -138,6 +138,11 @@ final class BuildMenu extends Menu {
                     open(p);
                 });
             });
+            button(27, icon(o.hangoutArea != null ? Material.ENDER_EYE : Material.SPYGLASS, "<aqua>Pick the hangout spot's area", List.of(
+                    "<gray>Leave your body and fly over the site:", "<gray>click one corner, then the other.",
+                    "<gray>Off-duty employees stand somewhere", "<gray>in it at random, instead of always",
+                    "<gray>the build's own placement point.", "", "<yellow>Click to leave your body")), (p, c) ->
+                    OutOfBody.start(plugin, p, e, OutOfBody.Goal.HANGOUT));
             var around = icon(o.clearAround ? Material.DIAMOND_SHOVEL : Material.GRASS_BLOCK, "<aqua>Space round the build: " + (o.clearAround ? "<yellow>dug out" : "<green>left alone"), List.of(
                     "<gray>Blueprints often come with empty space", "<gray>round the outside. Dug out, whatever's", "<gray>there goes (your ground, a neighbour's",
                     "<gray>build). Left alone, only space inside", "<gray>the build (rooms, doorways) is cleared.", "",
