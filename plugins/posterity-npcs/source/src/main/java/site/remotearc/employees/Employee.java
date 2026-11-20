@@ -77,6 +77,8 @@ public final class Employee {
     public boolean selfBuild;
     public final Stats stats = new Stats();
     public Inventory backpack;
+    /** Items that didn't fit back in the backpack on load (not saved): dropped once it's actually spawned somewhere. */
+    public final List<org.bukkit.inventory.ItemStack> spill = new ArrayList<>();
     /**
      * Lumberjack: sapling spots and the sapling each takes.
      * Farmer: crop positions and the crop block that grows there.

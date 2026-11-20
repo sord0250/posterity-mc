@@ -10,21 +10,26 @@ commands:
     description: Manage your employees.
     usage: /employees [help|hire|list|info|area|storage|filter|supply|build|blueprints|herd|skin|rename|pause|resume|move|fire]
     aliases: [emp, staff, arcemployees]
+    permission: employees.use
   sort:
     description: Sort nearby chests (and virtual chests) by category, put things away, tidy.
     usage: /sort [organize|deposit|tidy|undo|pin|unpin|category|radius|virtual|scan] [sel]
+    permission: employees.use
   map:
     description: Sign in to the web map (BlueMap) and the 3D build planner.
     usage: /map [planner | logout]
     aliases: [webmap, planner]
+    permission: employees.use
   trades:
     description: The villagers near you and what they sell; /trades <item> finds and marks the ones that sell it.
     usage: /trades [item | labels on|off]
     aliases: [villagers]
+    permission: employees.use
   guide:
     description: Guides you to a warp (or coordinates, or an employee) on foot, with an arrow and a trail, instead of teleporting.
     usage: /guide [warp | x z | x y z | employee | off]
     aliases: [navigate, nav]
+    permission: employees.use
 permissions:
   employees.use:
     description: Hire and manage your own employees.

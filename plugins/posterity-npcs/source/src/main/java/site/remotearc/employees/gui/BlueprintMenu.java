@@ -16,6 +16,7 @@ final class BlueprintMenu extends Menu {
     private final Employee e;
     private final Menu back;
     private final int page;
+    private org.bukkit.entity.Player viewer;
 
     BlueprintMenu(ArcEmployees plugin, Employee e, Menu back, int page) {
         super(plugin, 6, Component.text("Blueprints"));
@@ -25,8 +26,18 @@ final class BlueprintMenu extends Menu {
     }
 
     @Override
+    protected boolean live() {
+        return false;   // a folder listing; nothing here changes while it's open
+    }
+
+    @Override
+    public void openFor(org.bukkit.entity.Player p) {
+        viewer = p;
+    }
+
+    @Override
     protected void draw() {
-        List<String> names = plugin.blueprints().list();
+        List<String> names = plugin.blueprints().list(viewer != null && viewer.hasPermission("employees.admin"));
         int from = page * PER_PAGE;
         for (int i = 0; i < PER_PAGE && from + i < names.size(); i++) {
             String file = names.get(from + i);

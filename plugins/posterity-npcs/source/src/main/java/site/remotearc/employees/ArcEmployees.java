@@ -38,7 +38,6 @@ public final class ArcEmployees extends JavaPlugin {
     private Ledger ledger;
     private Reports reports;
     private Managers managers;
-    private final site.remotearc.employees.util.EstateBridge estate = new site.remotearc.employees.util.EstateBridge();
     private final site.remotearc.employees.util.KingdomBridge kingdomBridge = new site.remotearc.employees.util.KingdomBridge();
     private site.remotearc.employees.util.BlockLog blockLog;
     private Market market;
@@ -269,7 +268,6 @@ public final class ArcEmployees extends JavaPlugin {
         manager.refreshEquipment();
         if (market != null) market.real().restart();
         if (blockLog != null) blockLog.reset();
-        estate.reset();
         kingdomBridge.reset();
     }
 
@@ -290,7 +288,6 @@ public final class ArcEmployees extends JavaPlugin {
     public Reports reports() { return reports; }
     public Managers managers() { return managers; }
     public site.remotearc.employees.web.WebServer web() { return web; }
-    public site.remotearc.employees.util.EstateBridge estate() { return estate; }
     public site.remotearc.employees.util.KingdomBridge kingdomBridge() { return kingdomBridge; }
     public site.remotearc.employees.util.BlockLog blockLog() { return blockLog; }
     public Market market() { return market; }
@@ -319,5 +316,11 @@ public final class ArcEmployees extends JavaPlugin {
         ArcEmployees p = getPlugin(ArcEmployees.class);
         if (!p.isEnabled() || p.manager == null) return 0;
         return (int) p.manager.countInKingdom(kingdom);
+    }
+
+    /** Called by PosterityKingdoms, by reflection, to show the cap alongside the count on its info screen. */
+    public static int maxPerKingdom() {
+        ArcEmployees p = getPlugin(ArcEmployees.class);
+        return !p.isEnabled() || p.settings == null ? 0 : p.settings.maxPerKingdom;
     }
 }

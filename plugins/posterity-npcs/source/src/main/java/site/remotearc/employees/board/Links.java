@@ -58,6 +58,11 @@ public final class Links implements Listener {
         return n;
     }
 
+    @EventHandler
+    public void onQuit(org.bukkit.event.player.PlayerQuitEvent ev) {
+        pending.remove(ev.getPlayer().getUniqueId());
+    }
+
     private static String key(Block b) {
         return b.getWorld().getName() + ";" + b.getX() + ";" + b.getY() + ";" + b.getZ();
     }
@@ -86,8 +91,7 @@ public final class Links implements Listener {
         boolean control = Tag.BUTTONS.isTagged(b.getType()) || b.getType() == Material.LEVER;
         if (!control) ev.setCancelled(true);   // a linked sign or block shouldn't do its own thing
         if (!link.owner().equals(p.getUniqueId()) && !p.hasPermission("employees.admin")) {
-            Msg.error(p, "This control belongs to " + Bukkit.getOfflinePlayer(link.owner()).getName() + ".");
-            if (control) ev.setCancelled(true);
+            // not theirs to trigger; let a shared lever/button keep working normally for everyone else
             return;
         }
         String action = link.action();

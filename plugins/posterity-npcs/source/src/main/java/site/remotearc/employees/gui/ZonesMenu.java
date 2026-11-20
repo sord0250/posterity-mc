@@ -37,7 +37,7 @@ final class ZonesMenu extends Menu {
 
     @Override
     public void open(Player p) {
-        boolean guard = e.job == JobType.GUARD || e.job == JobType.BODYGUARD;
+        boolean guard = e.job == JobType.BODYGUARD;
         List<String> lines = new ArrayList<>();
         lines.add("<gray>Places " + e.name + " leaves alone: no " + (guard ? "fighting mobs there (a golem farm's zombie)."
                 : "mining, chopping, harvesting, building or picking up there.") + " Walking through is fine."

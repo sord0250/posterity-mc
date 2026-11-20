@@ -2,6 +2,7 @@ package site.remotearc.employees.build;
 
 import java.io.BufferedInputStream;
 import java.io.DataInputStream;
+import java.io.FilterInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
@@ -19,6 +20,8 @@ final class Nbt {
 
     private static final int MAX_DEPTH = 64;
     private static final int MAX_ARRAY = 64 * 1024 * 1024;
+    /** However small the file on disk, a gzip bomb can't make it unpack past this. */
+    private static final long MAX_UNPACKED = 512L * 1024 * 1024;
 
     private Nbt() {}
 
@@ -90,7 +93,7 @@ final class Nbt {
         int a = in.read(), b = in.read();
         in.reset();
         InputStream src = a == 0x1f && b == 0x8b ? new GZIPInputStream(in, 65536) : in;
-        DataInputStream d = new DataInputStream(new BufferedInputStream(src, 65536));
+        DataInputStream d = new DataInputStream(new BufferedInputStream(new Capped(src, MAX_UNPACKED), 65536));
         int type = d.readUnsignedByte();
         if (type != 10) throw new IOException("not an NBT file (root tag type " + type + ")");
         d.readUTF();
@@ -141,6 +144,31 @@ final class Nbt {
             }
             default -> throw new IOException("unknown NBT tag type " + type);
         };
+    }
+
+    /** Counts bytes actually unpacked (past any gzip) and refuses once a bomb would have run us out of memory. */
+    private static final class Capped extends FilterInputStream {
+        private final long max;
+        private long seen;
+
+        Capped(InputStream in, long max) {
+            super(in);
+            this.max = max;
+        }
+
+        @Override
+        public int read() throws IOException {
+            int b = super.read();
+            if (b >= 0 && ++seen > max) throw new IOException("that file unpacks to more than " + (max / 1024 / 1024) + " MB; refused so it can't exhaust memory");
+            return b;
+        }
+
+        @Override
+        public int read(byte[] b, int off, int len) throws IOException {
+            int n = super.read(b, off, len);
+            if (n > 0 && (seen += n) > max) throw new IOException("that file unpacks to more than " + (max / 1024 / 1024) + " MB; refused so it can't exhaust memory");
+            return n;
+        }
     }
 
     private static int length(DataInputStream d) throws IOException {

@@ -67,8 +67,9 @@ public final class Kingdom {
         return name.toLowerCase(Locale.ROOT);
     }
 
+    /** Never "confirm": /kingdom delete <name> confirm couldn't tell that name apart from the confirmation step. */
     public static boolean validName(String n) {
-        return n.matches("[A-Za-z0-9_-]{1,24}");
+        return n.matches("[A-Za-z0-9_-]{1,24}") && !n.equalsIgnoreCase("confirm");
     }
 
     /** The owner, or a player they've put in charge. */

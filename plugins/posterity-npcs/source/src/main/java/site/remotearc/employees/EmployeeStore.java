@@ -107,8 +107,9 @@ final class EmployeeStore {
     }
 
     private Employee read(UUID id, ConfigurationSection s) {
-        JobType job = JobType.parse(s.getString("job", ""));
-        if (job == null) throw new IllegalArgumentException("unknown job " + s.getString("job"));
+        String savedJob = s.getString("job", "");
+        JobType job = JobType.parse(savedJob);
+        if (job == null) throw new IllegalArgumentException("unknown job " + savedJob);
         Employee e = new Employee(id, UUID.fromString(s.getString("owner")), job, s.getString("name", "Employee"));
         e.hiredAt = s.getLong("hired-at");
         e.villagerType = s.getString("villager-type");
@@ -182,7 +183,8 @@ final class EmployeeStore {
             }
         }
         e.herdSize = s.getInt("herd-size");
-        e.following = s.getBoolean("following", true);
+        // GUARD no longer exists (merged into BODYGUARD with the follow toggle): one, staying at its post, is how it always behaved.
+        e.following = s.getBoolean("following", !savedJob.equalsIgnoreCase("GUARD"));
         for (String n : s.getStringList("never-sell")) {
             Material m = Material.matchMaterial(n);
             if (m != null) e.neverSell.add(m);
@@ -273,12 +275,26 @@ final class EmployeeStore {
                 else if (items[i] != null) overflow.add(items[i]);
             }
             e.backpack.setContents(sized);
-            e.backpack.addItem(overflow.toArray(new ItemStack[0]));
+            if (!overflow.isEmpty()) {
+                var leftover = e.backpack.addItem(overflow.toArray(new ItemStack[0]));
+                // Didn't fit back in (the backpack shrank, or it was already full): kept, not silently lost;
+                // dropped once this employee is actually placed somewhere (its world may not be loaded yet).
+                e.spill.addAll(leftover.values());
+            }
         }
         return e;
     }
 
     void save(Iterable<Employee> employees) {
+        writeToDisk(snapshot(employees));
+    }
+
+    /**
+     * Everything a save needs from live employee data (backpacks encoded and
+     * all), without touching the disk. Safe only on the main thread; the
+     * string it returns can then be written from any thread.
+     */
+    String snapshot(Iterable<Employee> employees) {
         YamlConfiguration y = new YamlConfiguration();
         y.options().setHeader(List.of(
                 "ArcEmployees data. Edit only while the server is stopped;",
@@ -387,10 +403,34 @@ final class EmployeeStore {
                 s.set("knocked-out-by", e.knockedOutBy);
             }
         }
+        return y.saveToString();
+    }
+
+    /**
+     * Pulls one employee out of the live list and files it the same way a
+     * record whose world wasn't loaded yet at startup is kept: written back
+     * unchanged on every save until {@link #retryPreserved()} can read it
+     * again (its world reloading). Used when a world unloads while the
+     * plugin is running, so that employee isn't lost or left pointing at a
+     * dead world.
+     */
+    void preserve(Employee e) {
+        YamlConfiguration y = new YamlConfiguration();
+        try {
+            y.loadFromString(snapshot(List.of(e)));
+        } catch (InvalidConfigurationException ex) {
+            return;   // can't happen: we just built this string ourselves
+        }
+        ConfigurationSection sec = y.getConfigurationSection("employees." + e.id);
+        if (sec != null) preserved.put(e.id.toString(), sec);
+    }
+
+    /** The disk half of a save: plain file I/O, safe to run off the main thread. */
+    void writeToDisk(String yaml) {
         try {
             Files.createDirectories(file.getParentFile().toPath());
             Path tmp = file.toPath().resolveSibling("employees.yml.tmp");
-            Files.writeString(tmp, y.saveToString(), StandardCharsets.UTF_8);
+            Files.writeString(tmp, yaml, StandardCharsets.UTF_8);
             Files.move(tmp, file.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException ex) {
             log.log(Level.SEVERE, "Could not save employees.yml", ex);

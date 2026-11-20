@@ -3,6 +3,7 @@ package site.remotearc.kingdom;
 import net.milkbowl.vault.economy.Economy;
 import net.milkbowl.vault.economy.EconomyResponse;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
@@ -18,8 +19,8 @@ import java.util.UUID;
 /** /kingdom (also /kd, /kingdoms): claiming a kingdom's Core and running it. */
 final class KingdomCommand implements TabExecutor {
 
-    private static final List<String> SUBS = List.of("help", "claim", "info", "addruler", "removeruler", "leave", "delete", "flag");
-    private static final List<String> ADMIN = List.of("money");
+    private static final List<String> SUBS = List.of("help", "core", "info", "addruler", "removeruler", "leave", "delete", "flag");
+    private static final List<String> ADMIN = List.of("money", "reload");
 
     private final PosterityKingdoms plugin;
 
@@ -42,6 +43,11 @@ final class KingdomCommand implements TabExecutor {
             Msg.error(s, "Only admins can do that.");
             return true;
         }
+        if (sub.equals("reload")) {
+            plugin.reloadSettings();
+            Msg.send(s, "<green>PosterityKingdoms config reloaded.");
+            return true;
+        }
         if (!(s instanceof Player p)) {
             if (!sub.equals("info")) {
                 Msg.error(s, "Players only.");
@@ -52,13 +58,14 @@ final class KingdomCommand implements TabExecutor {
         }
         switch (sub) {
             case "help" -> help(p, label);
-            case "claim" -> claim(p, args);
+            case "core", "claim" -> core(p, args);
             case "info" -> {
                 if (args.length > 1) info(p, kingdoms().get(args[1]));
                 else site.remotearc.kingdom.gui.KingdomMenu.show(plugin, p);
             }
             case "addruler" -> ruler(p, args, true);
             case "removeruler" -> ruler(p, args, false);
+            case "acceptruler" -> acceptRuler(p);
             case "leave" -> leave(p);
             case "delete" -> delete(p, args, label);
             case "flag" -> flag(p, args);
@@ -70,24 +77,26 @@ final class KingdomCommand implements TabExecutor {
 
     private void help(CommandSender s, String label) {
         String c = "<gold>/" + label;
-        s.sendMessage(Msg.parse(c + " claim <name></white> <gray>- claim this one spot as your kingdom's Core; its first"
-                + " two NPCs arrive free to hire (with Posterity NPCs installed)"));
+        s.sendMessage(Msg.parse(c + " core <name></white> <gray>- gives you a Kingdom Core (bedrock) to place; wherever you set it"
+                + " down becomes your kingdom's Core (and can't be broken), and its first two NPCs arrive free to hire (with Posterity NPCs installed)"));
         s.sendMessage(Msg.parse(c + " info [kingdom]</white> <gray>- bare, or with no kingdom named: your own kingdom's info"
                 + " screen, with buttons for all of the above; named: another kingdom's owner, rulers and Core as plain text"));
-        s.sendMessage(Msg.parse(c + " addruler | removeruler <player></white> <gray>- put someone else in charge of your"
-                + " kingdom too (they can also buy NPCs for it); owner only"));
+        s.sendMessage(Msg.parse(c + " addruler | removeruler <player></white> <gray>- invite someone else to help rule your"
+                + " kingdom too (they can also buy NPCs for it), or take that back; owner only, and they have to accept"));
         s.sendMessage(Msg.parse(c + " leave</white> <gray>- give up being a ruler of the kingdom you're in"));
         s.sendMessage(Msg.parse(c + " delete [kingdom]</white> <gray>- disband your kingdom (or, for admins, anyone's)"));
         s.sendMessage(Msg.parse(c + " flag set</white> <gray>- make the banner in your hand your kingdom's flag design (owner only)"));
         s.sendMessage(Msg.parse(c + " flag buy</white> <gray>- a copy of your kingdom's flag for " + plugin.settings().flagEmeralds + " emeralds"));
         if (admin(s)) {
             s.sendMessage(Msg.parse(c + " money <amount></white> <gray>- give yourself money (economy stub, until merchants exist)"));
+            s.sendMessage(Msg.parse(c + " reload</white> <gray>- reload config.yml"));
         }
     }
 
-    private void claim(Player p, String[] args) {
+    /** Gives the player a Kingdom Core to go place: founding happens in CoreListener, once it's actually set down. */
+    private void core(Player p, String[] args) {
         if (args.length < 2) {
-            Msg.error(p, "Usage: /kingdom claim <name>");
+            Msg.error(p, "Usage: /kingdom core <name>");
             return;
         }
         if (kingdoms().of(p.getUniqueId()) != null) {
@@ -95,14 +104,15 @@ final class KingdomCommand implements TabExecutor {
             return;
         }
         String name = args[1];
-        if (!Kingdom.validName(name) || kingdoms().get(name) != null) {
-            Msg.error(p, "Pick another name (1-24 letters, numbers, - or _, not already used).");
+        if (!Kingdom.validName(name) || kingdoms().get(name) != null || kingdoms().everUsed(name)) {
+            Msg.error(p, "Pick another name (1-24 letters, numbers, - or _, never used before, even by a disbanded kingdom).");
             return;
         }
-        Kingdom k = new Kingdom(name, p.getUniqueId(), p.getLocation());
-        kingdoms().found(k);
-        Msg.send(p, "<green>" + Msg.esc(k.name) + "</green> claimed! Its Core is right here: " + k.coreX + ", " + k.coreY + ", " + k.coreZ + ".");
-        settlers(p, k);
+        org.bukkit.inventory.ItemStack core = CoreListener.item(name, p.getUniqueId());
+        var left = p.getInventory().addItem(core);
+        for (var s : left.values()) p.getWorld().dropItem(p.getLocation(), s);
+        Msg.send(p, "<green>Here's " + Msg.esc(name) + "'s Kingdom Core.</green> <gray>Place the bedrock wherever you want your kingdom"
+                + " centered: that spot becomes its Core (and can't be broken afterward).");
     }
 
     /**
@@ -111,12 +121,12 @@ final class KingdomCommand implements TabExecutor {
      * reflection, the way ArcEmployees reaches PosterityKingdoms.kingdomOf:
      * neither plugin needs the other, and without ArcEmployees nothing happens.
      */
-    private void settlers(Player p, Kingdom k) {
+    static void settlers(PosterityKingdoms plugin, UUID founder, Location core, Kingdom k) {
         var employees = Bukkit.getPluginManager().getPlugin("ArcEmployees");
         if (employees == null || !employees.isEnabled()) return;
         try {
-            employees.getClass().getMethod("kingdomFounded", UUID.class, org.bukkit.Location.class, String.class)
-                    .invoke(null, p.getUniqueId(), p.getLocation(), k.name);
+            employees.getClass().getMethod("kingdomFounded", UUID.class, Location.class, String.class)
+                    .invoke(null, founder, core, k.name);
         } catch (ReflectiveOperationException | RuntimeException ex) {
             plugin.getLogger().warning("Couldn't send settlers to the new kingdom " + k.name + " (ArcEmployees): " + ex);
         }
@@ -131,6 +141,12 @@ final class KingdomCommand implements TabExecutor {
                 + " · Core at " + k.coreX + ", " + k.coreY + ", " + k.coreZ + " in " + Msg.esc(k.world)));
     }
 
+    /** A pending invite to rule a kingdom, keyed by the invited player: they have to accept it themselves. */
+    private record Invite(String kingdomId, long expires) {}
+
+    private final java.util.Map<UUID, Invite> invites = new java.util.HashMap<>();
+    private static final long INVITE_MS = 5 * 60_000L;
+
     private void ruler(Player p, String[] args, boolean adding) {
         Kingdom k = kingdoms().of(p.getUniqueId());
         if (k == null || !k.owner.equals(p.getUniqueId())) {
@@ -141,20 +157,69 @@ final class KingdomCommand implements TabExecutor {
             Msg.error(p, "Usage: /kingdom " + (adding ? "addruler" : "removeruler") + " <player>");
             return;
         }
-        OfflinePlayer target = Bukkit.getOfflinePlayer(args[1]);
+        // Looked up only among players this server has actually seen: never blocks on Mojang, and a typo can't add a junk ruler.
+        OfflinePlayer target = Bukkit.getOfflinePlayerIfCached(args[1]);
+        if (target == null) {
+            Msg.error(p, "Never seen anyone named " + Msg.esc(args[1]) + " on this server.");
+            return;
+        }
         UUID id = target.getUniqueId();
         if (id.equals(k.owner)) {
             Msg.error(p, "That's the owner.");
             return;
         }
-        if (adding) {
-            k.rulers.add(id);
-            Msg.send(p, "<green>" + Msg.esc(args[1]) + "</green> can now rule " + Msg.esc(k.name) + " too: they can buy NPCs for it.");
-        } else {
-            k.rulers.remove(id);
+        if (!adding) {
+            boolean was = k.rulers.remove(id);
+            invites.remove(id);
+            kingdoms().save();
             Msg.send(p, "<gray>" + Msg.esc(args[1]) + " no longer rules " + Msg.esc(k.name) + ".");
+            Player removed = was ? Bukkit.getPlayer(id) : null;
+            if (removed != null) Msg.send(removed, "<gray>" + Msg.esc(p.getName()) + " took you off ruling " + Msg.esc(k.name) + ".");
+            return;
         }
+        if (k.rulers.contains(id)) {
+            Msg.error(p, Msg.esc(args[1]) + " already rules " + Msg.esc(k.name) + ".");
+            return;
+        }
+        if (kingdoms().of(id) != null) {
+            Msg.error(p, Msg.esc(args[1]) + " is already in a kingdom.");
+            return;
+        }
+        Player online = target.getPlayer();
+        if (online == null) {
+            Msg.error(p, Msg.esc(args[1]) + " needs to be online to invite them.");
+            return;
+        }
+        invites.put(id, new Invite(k.id, System.currentTimeMillis() + INVITE_MS));
+        Msg.send(p, "<gray>Invited " + Msg.esc(args[1]) + " to rule " + Msg.esc(k.name) + "; they have 5 minutes to accept.");
+        online.sendMessage(Msg.parse("<gold>" + Msg.esc(p.getName()) + "</gold> <gray>wants you to help rule <gold>" + Msg.esc(k.name)
+                + "</gold> too (you could buy NPCs for it). <white><click:run_command:'/kingdom acceptruler'>[Accept]</click></white>"
+                + " <dark_gray>(expires in 5 minutes)"));
+    }
+
+    /** The target of an addruler invite accepts it themselves: nobody's put in charge of a kingdom without agreeing to it. */
+    private void acceptRuler(Player p) {
+        Invite inv = invites.remove(p.getUniqueId());
+        if (inv == null || inv.expires() < System.currentTimeMillis()) {
+            Msg.error(p, "That invite isn't there any more (it may have expired, or nobody sent you one).");
+            return;
+        }
+        if (kingdoms().of(p.getUniqueId()) != null) {
+            Msg.error(p, "You're already in a kingdom.");
+            return;
+        }
+        Kingdom k = kingdoms().get(inv.kingdomId());
+        if (k == null) {
+            Msg.error(p, "That kingdom doesn't exist any more.");
+            return;
+        }
+        k.rulers.add(p.getUniqueId());
         kingdoms().save();
+        Msg.send(p, "<green>You now help rule " + Msg.esc(k.name) + ".");
+        OfflinePlayer owner = Bukkit.getOfflinePlayer(k.owner);
+        if (owner.getPlayer() != null) {
+            owner.getPlayer().sendMessage(Msg.parse("<green>" + Msg.esc(p.getName()) + "</green> <gray>accepted, and now helps rule " + Msg.esc(k.name) + "."));
+        }
     }
 
     private void leave(Player p) {

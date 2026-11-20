@@ -407,7 +407,8 @@ public final class Stalls {
         double bestD = Double.MAX_VALUE;
         for (Entity en : world.getNearbyEntities(at, RANGE, 16, RANGE, en -> en instanceof Villager)) {
             Villager v = (Villager) en;
-            if (!w.mayWork(v.getLocation())) continue;   // not off someone else's land
+            if (!w.mayWork(v.getLocation())) continue;   // not in a no-work zone
+            if (nearSomeoneElses(w, v.getLocation())) continue;   // close to another player's employee's home: likely theirs, not a free villager
             Long until = UNREACHABLE.get(v.getUniqueId());
             if (until != null && until > System.currentTimeMillis()) continue;
             // Already working somewhere (it has a workstation of its own, likely in its own pod): leave it there.
@@ -428,6 +429,20 @@ public final class Stalls {
             }
         }
         return best;
+    }
+
+    /**
+     * No land claims mean no "someone else's base" to check directly, but a
+     * villager standing right by another player's employee's home is
+     * probably one they were already counting on: left alone, instead of
+     * being leashed off to a stranger's trading hall.
+     */
+    private static boolean nearSomeoneElses(Worker w, Location at) {
+        for (site.remotearc.employees.Employee other : w.plugin().manager().all()) {
+            if (other.owner.equals(w.e.owner) || w.plugin().managers().trusts(other.owner, w.e.owner)) continue;
+            if (other.home != null && other.home.getWorld() == at.getWorld() && other.home.distanceSquared(at) < 24 * 24) return true;
+        }
+        return false;
     }
 
     /**

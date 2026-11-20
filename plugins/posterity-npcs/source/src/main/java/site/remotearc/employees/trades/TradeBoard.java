@@ -89,9 +89,10 @@ public final class TradeBoard implements TabExecutor, Listener {
     static List<Seller> near(ArcEmployees plugin, Player p) {
         List<Seller> out = new ArrayList<>();
         Location at = p.getLocation();
+        Map<UUID, String> stalls = stallsOf(plugin, p);
         for (Villager v : at.getWorld().getNearbyEntitiesByType(Villager.class, at, RADIUS, 48, RADIUS)) {
             if (v.getRecipes().isEmpty()) continue;
-            out.add(seller(plugin, p, v));
+            out.add(seller(v, stalls.get(v.getUniqueId())));
         }
         out.sort(Comparator.comparing(Seller::profession).thenComparing(s -> s.stall() == null ? "~" : s.stall())
                 .thenComparingDouble(s -> s.v().getLocation().distanceSquared(at)));
@@ -99,6 +100,10 @@ public final class TradeBoard implements TabExecutor, Listener {
     }
 
     static Seller seller(ArcEmployees plugin, Player p, Villager v) {
+        return seller(v, stallsOf(plugin, p).get(v.getUniqueId()));
+    }
+
+    private static Seller seller(Villager v, String stall) {
         List<Offer> offers = new ArrayList<>();
         for (MerchantRecipe r : v.getRecipes()) {
             List<String> price = new ArrayList<>();
@@ -108,18 +113,19 @@ public final class TradeBoard implements TabExecutor, Listener {
             }
             offers.add(new Offer(itemName(r.getResult()), String.join(" + ", price), r.getUses() >= r.getMaxUses(), r.getUses(), r.getMaxUses()));
         }
-        return new Seller(v, title(v.getProfession().getKey().getKey()), v.getVillagerLevel(), stallOf(plugin, p, v), offers);
+        return new Seller(v, title(v.getProfession().getKey().getKey()), v.getVillagerLevel(), stall, offers);
     }
 
-    /** "Stall 3 (Juno)" if one of the player's traders has it in a stall. */
-    private static String stallOf(ArcEmployees plugin, Player p, Villager v) {
+    /** Every villager of this player's traders that's in a stall, labeled "stall 3 (Juno)" - built once, not per villager. */
+    private static Map<UUID, String> stallsOf(ArcEmployees plugin, Player p) {
+        Map<UUID, String> out = new HashMap<>();
         for (Employee e : plugin.manager().ownedBy(p.getUniqueId())) {
             for (int i = 0; i < e.stalls.size(); i++) {
-                Villager in = site.remotearc.employees.job.Stalls.inStallPublic(v.getWorld(), e.stalls.get(i));
-                if (in != null && in.getUniqueId().equals(v.getUniqueId())) return "stall " + (i + 1) + " (" + e.name + ")";
+                Villager in = site.remotearc.employees.job.Stalls.inStallPublic(p.getWorld(), e.stalls.get(i));
+                if (in != null) out.putIfAbsent(in.getUniqueId(), "stall " + (i + 1) + " (" + e.name + ")");
             }
         }
-        return null;
+        return out;
     }
 
     /** The same, for other parts of the plugin. */

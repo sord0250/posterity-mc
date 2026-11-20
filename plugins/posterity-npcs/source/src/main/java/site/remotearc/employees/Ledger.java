@@ -346,7 +346,9 @@ public final class Ledger {
             }
         }
         try {
-            y.save(file);
+            java.nio.file.Path tmp = file.toPath().resolveSibling("ledger.yml.tmp");
+            java.nio.file.Files.writeString(tmp, y.saveToString(), java.nio.charset.StandardCharsets.UTF_8);
+            java.nio.file.Files.move(tmp, file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
             dirty = false;
         } catch (IOException ex) {
             plugin.getLogger().log(Level.WARNING, "Could not save ledger.yml", ex);

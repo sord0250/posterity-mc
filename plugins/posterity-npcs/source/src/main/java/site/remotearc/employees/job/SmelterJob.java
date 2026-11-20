@@ -31,6 +31,13 @@ final class SmelterJob implements Job {
     private List<BlockPos> furnaces = List.of();
     private String idle = "Looking for furnaces";
 
+    /** A scan in progress: the next column to look at, and the furnaces found so far this pass. */
+    private int cursorX, cursorZ;
+    private boolean scanning;
+    private boolean firstPassDone;
+    private List<BlockPos> furnacesNow;
+    private static final int COLUMNS_PER_STEP = 200;
+
     @Override
     public Task next(Worker w) {
         WorkArea a = w.e.area;
@@ -39,10 +46,8 @@ final class SmelterJob implements Job {
             idle = "No work area in this world";
             return null;
         }
-        if (w.cooldownReady("furnace-scan", 100) || furnaces.isEmpty()) {
-            scan(world, a);
-            furnaces.removeIf(p -> !w.mayWork(p));
-        }
+        scanStep(w, world, a);
+        furnaces.removeIf(p -> !w.mayWork(p));
         if (furnaces.isEmpty()) {
             idle = "No furnaces, smokers or blast furnaces in the work area";
             return null;
@@ -80,17 +85,35 @@ final class SmelterJob implements Job {
         return null;
     }
 
-    private void scan(World world, WorkArea a) {
-        List<BlockPos> list = new ArrayList<>();
-        for (int x = a.minX(); x <= a.maxX(); x++) {
-            for (int z = a.minZ(); z <= a.maxZ(); z++) {
-                if (!world.isChunkLoaded(x >> 4, z >> 4)) continue;
+    /** Looks at a bounded number of columns per call instead of the whole (possibly huge) area at once. */
+    private void scanStep(Worker w, World world, WorkArea a) {
+        if (!scanning) {
+            if (firstPassDone && !w.cooldownReady("furnace-scan", 100)) return;
+            scanning = true;
+            cursorX = a.minX();
+            cursorZ = a.minZ();
+            furnacesNow = new ArrayList<>();
+        }
+        int x = cursorX, z = cursorZ, left = COLUMNS_PER_STEP;
+        while (x <= a.maxX() && left-- > 0) {
+            if (world.isChunkLoaded(x >> 4, z >> 4)) {
                 for (int y = a.minY(); y <= a.maxY(); y++) {
-                    if (Smelting.Kind.of(world.getType(x, y, z)) != null) list.add(new BlockPos(x, y, z));
+                    if (Smelting.Kind.of(world.getType(x, y, z)) != null) furnacesNow.add(new BlockPos(x, y, z));
                 }
             }
+            if (++z > a.maxZ()) {
+                z = a.minZ();
+                x++;
+            }
         }
-        furnaces = list;
+        if (x > a.maxX()) {
+            furnaces = furnacesNow;
+            scanning = false;
+            firstPassDone = true;
+        } else {
+            cursorX = x;
+            cursorZ = z;
+        }
     }
 
     /** One thing to do at a furnace, or null if it's fine as it is. */

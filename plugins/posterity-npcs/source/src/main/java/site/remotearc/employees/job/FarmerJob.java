@@ -47,6 +47,13 @@ final class FarmerJob implements Job {
     private List<BlockPos> empty = List.of();
     private String idle = "Looking for crops";
 
+    /** A scan in progress: the next column to look at, and what it's found so far this pass. */
+    private int cursorX, cursorZ;
+    private boolean scanning;
+    private boolean firstPassDone;
+    private List<BlockPos> ripeNow, emptyNow;
+    private static final int COLUMNS_PER_STEP = 200;
+
     @Override
     public Task next(Worker w) {
         WorkArea a = w.e.area;
@@ -55,11 +62,9 @@ final class FarmerJob implements Job {
             idle = "No work area in this world";
             return null;
         }
-        if (w.cooldownReady("crop-scan", 40)) {
-            scan(world, a, w.e.spots);
-            ripe.removeIf(p -> !w.mayWork(p));
-            empty.removeIf(p -> !w.mayWork(p));
-        }
+        scanStep(w, world, a, w.e.spots);
+        ripe.removeIf(p -> !w.mayWork(p));
+        empty.removeIf(p -> !w.mayWork(p));
 
         BlockPos target = nearest(w, ripe, p -> {
             Block b = p.block(world);
@@ -131,12 +136,19 @@ final class FarmerJob implements Job {
         return best;
     }
 
-    private void scan(World world, WorkArea a, Map<BlockPos, Material> spots) {
-        List<BlockPos> ripeNow = new ArrayList<>();
-        List<BlockPos> emptyNow = new ArrayList<>();
-        for (int x = a.minX(); x <= a.maxX(); x++) {
-            for (int z = a.minZ(); z <= a.maxZ(); z++) {
-                if (!world.isChunkLoaded(x >> 4, z >> 4)) continue;
+    /** Looks at a bounded number of columns per call instead of the whole (possibly huge) area at once. */
+    private void scanStep(Worker w, World world, WorkArea a, Map<BlockPos, Material> spots) {
+        if (!scanning) {
+            if (firstPassDone && !w.cooldownReady("crop-scan", 40)) return;
+            scanning = true;
+            cursorX = a.minX();
+            cursorZ = a.minZ();
+            ripeNow = new ArrayList<>();
+            emptyNow = new ArrayList<>();
+        }
+        int x = cursorX, z = cursorZ, left = COLUMNS_PER_STEP;
+        while (x <= a.maxX() && left-- > 0) {
+            if (world.isChunkLoaded(x >> 4, z >> 4)) {
                 Material below = world.getType(x, a.minY() - 1, z);
                 for (int y = a.minY(); y <= a.maxY(); y++) {
                     Material m = world.getType(x, y, z);
@@ -150,15 +162,26 @@ final class FarmerJob implements Job {
                     below = m;
                 }
             }
+            if (++z > a.maxZ()) {
+                z = a.minZ();
+                x++;
+            }
         }
-        spots.keySet().removeIf(p -> {
-            if (!a.contains(p)) return true;
-            if (!world.isChunkLoaded(p.x() >> 4, p.z() >> 4)) return false;
-            Material soil = world.getType(p.x(), p.y() - 1, p.z());
-            return soil != Material.FARMLAND && soil != Material.SOUL_SAND;
-        });
-        ripe = ripeNow;
-        empty = emptyNow;
+        if (x > a.maxX()) {
+            spots.keySet().removeIf(p -> {
+                if (!a.contains(p)) return true;
+                if (!world.isChunkLoaded(p.x() >> 4, p.z() >> 4)) return false;
+                Material soil = world.getType(p.x(), p.y() - 1, p.z());
+                return soil != Material.FARMLAND && soil != Material.SOUL_SAND;
+            });
+            ripe = ripeNow;
+            empty = emptyNow;
+            scanning = false;
+            firstPassDone = true;
+        } else {
+            cursorX = x;
+            cursorZ = z;
+        }
     }
 
     static boolean isRipe(World w, int x, int y, int z, BlockData data) {

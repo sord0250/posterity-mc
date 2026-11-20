@@ -163,7 +163,7 @@ public final class ChestLabels {
                     if (Math.abs(st.getX() - l.getBlockX()) > RANGE || Math.abs(st.getZ() - l.getBlockZ()) > RANGE
                             || Math.abs(st.getY() - l.getBlockY()) > 5) continue;
                     Block b = st.getBlock();
-                    if (!p.hasPermission("employees.admin") && !plugin.estate().mayWork(p.getUniqueId(), w, b.getX(), b.getY(), b.getZ())) continue;
+                    if (!p.hasPermission("employees.admin") && !plugin.manager().mayUseChest(p.getUniqueId(), w.getName(), b.getX(), b.getY(), b.getZ())) continue;
                     Sorter.Box box = sorter.boxAt(b);
                     if (box != null && seen.add(box.key)) out.add(box);
                 }

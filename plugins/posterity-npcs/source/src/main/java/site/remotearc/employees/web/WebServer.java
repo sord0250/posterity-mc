@@ -53,8 +53,9 @@ import java.util.logging.Level;
  * The map planner's server: sign-in from the game, live blocks and villagers
  * round a spot, each builder's plan and what's left of it, your drafts, and
  * sending a draft to a builder, and the blueprint upload page (/upload/).
- * Listens on 127.0.0.1 only; nginx puts it at web.public-url + "arc/"
- * (e.g. https://your-domain.example/map/arc/) next to BlueMap (/map/).
+ * Listens on 127.0.0.1 only; off by default (web.enabled) until you reverse
+ * proxy it at web.public-url + "arc/" (e.g. https://spencerord.me/mc/arc/)
+ * next to BlueMap (/mc/).
  */
 public final class WebServer {
 
@@ -97,8 +98,8 @@ public final class WebServer {
 
     public void start() {
         var c = plugin.getConfig();
-        if (!c.getBoolean("web.enabled", true)) return;
-        publicUrl = c.getString("web.public-url", "https://your-domain.example/map/");
+        if (!c.getBoolean("web.enabled", false)) return;
+        publicUrl = c.getString("web.public-url", "https://spencerord.me/mc/");
         if (!publicUrl.endsWith("/")) publicUrl += "/";
         String bind = c.getString("web.bind", "127.0.0.1");
         int port = c.getInt("web.port", 8101);
@@ -201,7 +202,7 @@ public final class WebServer {
             }
             JsonElement out = switch (path) {
                 case "/api/me" -> sync(() -> me(me));
-                case "/api/region" -> region(q);
+                case "/api/region" -> region(me, q);
                 case "/api/villagers" -> sync(() -> villagers(me, q));
                 case "/api/plans" -> sync(() -> plans(me, q.get("world")));
                 case "/api/blocks" -> blocks();
@@ -373,13 +374,36 @@ public final class WebServer {
     }
 
     /** The blocks in a box: a palette and one 16-bit palette index a cell (y, then z, then x), base64. */
-    private JsonObject region(Map<String, String> q) throws Exception {
+    /** Far enough from anywhere you've got reason to look that the map won't x-ray it or load its chunks for you. */
+    private static final int MAP_REACH = 1000;
+
+    private boolean mayViewRegion(UUID me, World w, int cx, int cz) {
+        Player p = Bukkit.getPlayer(me);
+        if (p != null && (p.hasPermission("employees.admin") || (p.getWorld().equals(w) && near(p.getLocation().getBlockX(), p.getLocation().getBlockZ(), cx, cz)))) {
+            return true;
+        }
+        for (Employee e : plugin.manager().all()) {
+            if (!mayManage(me, e)) continue;
+            Location h = e.home != null ? e.home : e.location;
+            if (h != null && w.equals(h.getWorld()) && near(h.getBlockX(), h.getBlockZ(), cx, cz)) return true;
+            if (e.area != null && e.area.world().equals(w.getName()) && e.area.expand(MAP_REACH, MAP_REACH).containsColumn(cx, cz)) return true;
+        }
+        return false;
+    }
+
+    private static boolean near(long ax, long az, long bx, long bz) {
+        long dx = ax - bx, dz = az - bz;
+        return dx * dx + dz * dz <= (long) MAP_REACH * MAP_REACH;
+    }
+
+    private JsonObject region(UUID me, Map<String, String> q) throws Exception {
         String wn = q.getOrDefault("world", "world");
         int cx = num(q, "x"), cy = num(q, "y"), cz = num(q, "z");
         int r = Math.max(4, Math.min(64, q.containsKey("r") ? num(q, "r") : 24));
         int dy = Math.max(4, Math.min(48, q.containsKey("dy") ? num(q, "dy") : 20));
         World w = Bukkit.getWorld(wn);
         if (w == null) throw new Bad("No world called " + wn);
+        if (!mayViewRegion(me, w, cx, cz)) throw new Bad("Too far from anywhere of yours to look there.");
         int x0 = cx - r, x1 = cx + r, z0 = cz - r, z1 = cz + r;
         int y0 = Math.max(w.getMinHeight(), cy - dy), y1 = Math.min(w.getMaxHeight() - 1, cy + dy);
         // Snapshots on the server thread, read here.
@@ -489,6 +513,11 @@ public final class WebServer {
         return o;
     }
 
+    /** What a to-do scan found last time, so a page that keeps polling doesn't repeat a million-cell walk every time. */
+    private record PlanCache(long at, int layer, boolean finished, JsonArray todo, int left) {}
+
+    private final Map<BuildOrder, PlanCache> planCache = new java.util.WeakHashMap<>();
+
     /** Each of your builders' plans in this world, and the blocks it still has to place or clear. */
     private JsonArray plans(UUID me, String world) {
         JsonArray out = new JsonArray();
@@ -504,6 +533,14 @@ public final class WebServer {
             p.addProperty("blueprint", o.blueprint);
             p.addProperty("status", o.finished ? "finished" : o.started ? "building" : "waiting for Start");
             p.add("bounds", box(o));
+            long now = System.currentTimeMillis();
+            PlanCache cached = planCache.get(o);
+            if (cached != null && cached.layer() == o.layer && cached.finished() == o.finished && now - cached.at() < 3000) {
+                p.add("todo", cached.todo());
+                p.addProperty("left", cached.left());
+                out.add(p);
+                continue;
+            }
             JsonArray todo = new JsonArray();
             int left = 0;
             if (o.plan.volume() <= 2_000_000) {
@@ -514,8 +551,8 @@ public final class WebServer {
                             if (idx < 0) continue;
                             var at = o.toWorld(x, y, z);
                             if (!w.isChunkLoaded(at.x() >> 4, at.z() >> 4)) continue;
-                            BlockData want = o.data(idx), now = w.getBlockData(at.x(), at.y(), at.z());
-                            boolean done = want.getMaterial().isAir() ? now.getMaterial().isAir() || !o.clearAir : now.getMaterial() == want.getMaterial();
+                            BlockData want = o.data(idx), now2 = w.getBlockData(at.x(), at.y(), at.z());
+                            boolean done = want.getMaterial().isAir() ? now2.getMaterial().isAir() || !o.clearAir : now2.getMaterial() == want.getMaterial();
                             if (done) continue;
                             left++;
                             if (todo.size() < 20000) {
@@ -530,6 +567,7 @@ public final class WebServer {
                     }
                 }
             }
+            planCache.put(o, new PlanCache(now, o.layer, o.finished, todo, left));
             p.add("todo", todo);
             p.addProperty("left", left);
             out.add(p);

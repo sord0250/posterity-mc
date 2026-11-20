@@ -29,7 +29,10 @@ public final class KingdomMenu {
         lines.add("<gray>Core at <white>" + k.coreX + ", " + k.coreY + ", " + k.coreZ + "</white> in " + Msg.esc(k.world));
         lines.add("<gray>Rulers: <white>" + Msg.esc(k.rulerNames()));
         int npcs = employeeCount(k.name);
-        if (npcs >= 0) lines.add("<gray>NPCs: <white>" + npcs);
+        if (npcs >= 0) {
+            int cap = maxPerKingdom();
+            lines.add("<gray>NPCs: <white>" + npcs + (cap > 0 ? " / " + cap : ""));
+        }
         lines.add(k.flagBase == null ? "<gray>Flag: <white>none yet" : "<gray>Flag: <white>set");
 
         List<Dialogs.Button> b = new ArrayList<>();
@@ -83,12 +86,17 @@ public final class KingdomMenu {
     }
 
     private static void noKingdom(PosterityKingdoms plugin, Player p) {
-        List<String> lines = List.of("<gray>You're not in a kingdom yet. Claim the spot you're standing on as your kingdom's"
-                + " Core, and (with Posterity NPCs installed) its first two NPCs arrive free to hire.");
+        List<String> lines = List.of("<gray>You're not in a kingdom yet. Get a Kingdom Core (a piece of bedrock) and place it"
+                + " wherever you want your kingdom centered; that spot becomes its Core, and (with Posterity NPCs installed)"
+                + " its first two NPCs arrive free to hire.");
         List<Dialogs.Button> b = new ArrayList<>();
-        b.add(Dialogs.button("<green>Claim a kingdom here", "<gray>This spot becomes its Core.", pl ->
+        b.add(Dialogs.button("<green>Get a Kingdom Core", "<gray>Place it wherever you want; that spot becomes its Core.", pl ->
                 Prompt.ask(pl, "Name your kingdom?", name -> {
-            pl.performCommand("kingdom claim " + name);
+            if (!Kingdom.validName(name)) {
+                Msg.error(pl, "Pick another name (1-24 letters, numbers, - or _, no spaces).");
+                return;
+            }
+            pl.performCommand("kingdom core " + name);
             show(plugin, pl);
         })));
         Dialogs.show(plugin, p, "<gold>No kingdom yet", lines, b, 1, Dialogs.close("Done"));
@@ -102,6 +110,16 @@ public final class KingdomMenu {
             return (int) employees.getClass().getMethod("employeesInKingdom", String.class).invoke(null, kingdom);
         } catch (ReflectiveOperationException | RuntimeException ex) {
             return -1;
+        }
+    }
+
+    private static int maxPerKingdom() {
+        var employees = Bukkit.getPluginManager().getPlugin("ArcEmployees");
+        if (employees == null || !employees.isEnabled()) return 0;
+        try {
+            return (int) employees.getClass().getMethod("maxPerKingdom").invoke(null);
+        } catch (ReflectiveOperationException | RuntimeException ex) {
+            return 0;
         }
     }
 }

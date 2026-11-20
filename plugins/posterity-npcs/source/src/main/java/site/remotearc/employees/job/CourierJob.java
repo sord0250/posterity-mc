@@ -339,6 +339,9 @@ final class CourierJob implements Job {
             if (leg == Leg.DROP) w.e.stats.itemsMoved += Math.max(0, moved);
             w.stash(leftover);
             plugin.manager().markDirty();
+            // The virtual chest it just delivered to saves instantly; save soon too, not on the usual
+            // 30s timer, so a crash in between can't dupe or lose what moved.
+            if (moved > 0 && at.kind() == StorageTarget.Kind.VIRTUAL) plugin.manager().saveSoon();
             if (!leftover.isEmpty()) {
                 rest(w, index, where + " is full", 60);
                 return moved > 0;

@@ -96,17 +96,27 @@ public final class Greeter {
         if (shown == null || !shown.equals(entity)) entity.remove();
     }
 
-    /** The welcome screen: what to do first, and where to manage things once started. */
+    /** The welcome screen: what to do first (skipping what's already done), and where to manage things once started. */
     public static void greet(ArcEmployees plugin, Player p) {
+        String kingdom = plugin.kingdomBridge().kingdomOf(p.getUniqueId());
+        int employees = plugin.manager().ownedBy(p.getUniqueId()).size();
         List<String> lines = new ArrayList<>();
         lines.add("<gold><b>Welcome!</b></gold> <gray>Here's how to get going:");
-        lines.add("<white>1.</white> <gray>Find a place you want to settle.");
-        lines.add("<white>2.</white> <gray>Claim it: <white>/kingdom claim \\<name></white>");
-        lines.add("<white>3.</white> <gray>Two free NPCs show up there. Give them jobs: shift-right-click a villager,"
-                + " or <white>/employees hire \\<job></white>. Later, any grown-up villager can be turned into one too -"
-                + " it'll ask for the job's tool and some bread. <gold>A kingdom can have " + plugin.settings().maxPerKingdom
-                + " NPCs at most</gold>, for now.");
-        lines.add("<white>4.</white> <gray>Manage it all any time: <white>/employees</white> (your NPCs) and"
+        if (kingdom != null) {
+            lines.add("<green>\u2713</green> <gray>You've founded <white>" + site.remotearc.employees.gui.Describe.esc(kingdom) + "</white>.");
+        } else {
+            lines.add("<white>1.</white> <gray>Find a place you want to settle, then get a Kingdom Core and place it there:"
+                    + " <white>/kingdom core \\<name></white>");
+        }
+        if (employees > 0) {
+            lines.add("<green>\u2713</green> <gray>You already employ " + employees + " NPC" + (employees == 1 ? "" : "s") + ".");
+        } else {
+            lines.add("<white>2.</white> <gray>" + (kingdom != null ? "Two free NPCs showed up there. " : "Once it's founded, two free NPCs show up there. ")
+                    + "Give them jobs: shift-right-click a villager, or <white>/employees hire \\<job></white>. Later, any grown-up villager"
+                    + " can be turned into one too - it'll ask for the job's tool and some bread. <gold>A kingdom can have "
+                    + plugin.settings().maxPerKingdom + " NPCs at most</gold>, for now.");
+        }
+        lines.add("<white>" + (kingdom != null && employees > 0 ? "Tip" : "3.") + "</white> <gray>Manage it all any time: <white>/employees</white> (your NPCs) and"
                 + " <white>/kingdom</white> (your kingdom) - both open a screen of buttons.");
         Dialogs.show(plugin, p, "<gold>Guide", lines, List.of(Dialogs.close("Got it!")), 1, null);
     }

@@ -25,6 +25,13 @@ final class LumberjackJob implements Job {
     private List<BlockPos> bases = List.of();
     private String idle = "Looking for trees";
 
+    /** A scan in progress: the next column to look at, and the bases found so far this pass. */
+    private int cursorX, cursorZ;
+    private boolean scanning;
+    private boolean firstPassDone;
+    private List<BlockPos> basesNow;
+    private static final int COLUMNS_PER_STEP = 200;
+
     @Override
     public Task next(Worker w) {
         WorkArea a = w.e.area;
@@ -33,11 +40,9 @@ final class LumberjackJob implements Job {
             idle = "No work area in this world";
             return null;
         }
-        if (w.cooldownReady("tree-scan", 100)) {
-            bases = Trees.scan(world, a, w.e.spots);
-            bases.removeIf(p -> !w.mayWork(p));
-            w.e.spots.keySet().removeIf(p -> !w.mayWork(p));
-        }
+        scanStep(w, world, a);
+        bases.removeIf(p -> !w.mayWork(p));
+        w.e.spots.keySet().removeIf(p -> !w.mayWork(p));
         if (w.settings().lumberAutoPlant && w.cooldownReady("tree-layout", w.e.spots.isEmpty() || wantSaplings ? 100 : 600)) layout(w, world, a);
 
         BlockPos tree = null;
@@ -85,6 +90,34 @@ final class LumberjackJob implements Job {
         } else if (w.e.spots.isEmpty()) idle = "No trees or saplings in the work area";
         else idle = "Waiting for trees to grow";
         return null;
+    }
+
+    /** Looks at a bounded number of columns per call instead of the whole (possibly huge) area at once. */
+    private void scanStep(Worker w, World world, WorkArea a) {
+        if (!scanning) {
+            if (firstPassDone && !w.cooldownReady("tree-scan", 100)) return;
+            scanning = true;
+            cursorX = a.minX();
+            cursorZ = a.minZ();
+            basesNow = new java.util.ArrayList<>();
+        }
+        int x = cursorX, z = cursorZ, left = COLUMNS_PER_STEP;
+        while (x <= a.maxX() && left-- > 0) {
+            Trees.scanColumn(world, a, w.e.spots, x, z, basesNow);
+            if (++z > a.maxZ()) {
+                z = a.minZ();
+                x++;
+            }
+        }
+        if (x > a.maxX()) {
+            Trees.pruneSpots(world, a, w.e.spots);
+            bases = basesNow;
+            scanning = false;
+            firstPassDone = true;
+        } else {
+            cursorX = x;
+            cursorZ = z;
+        }
     }
 
     @Override

@@ -29,7 +29,7 @@ public final class Reports {
 
     /** Jobs whose worth isn't in goods (a build, safety), so a loss on paper is expected. */
     public static boolean worthNotInGoods(JobType j) {
-        return j == JobType.BUILDER || j == JobType.GUARD || j == JobType.BODYGUARD || j == JobType.COURIER;
+        return j == JobType.BUILDER || j == JobType.BODYGUARD || j == JobType.COURIER;
     }
 
     private final ArcEmployees plugin;

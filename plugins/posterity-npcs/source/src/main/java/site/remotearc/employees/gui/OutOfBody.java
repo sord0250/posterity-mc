@@ -493,7 +493,7 @@ public final class OutOfBody implements Listener {
             plugin.zonePresets().changed();
             plugin.manager().markDirty();
             e.worker.interrupt();
-            String what = e.job == JobType.GUARD || e.job == JobType.BODYGUARD ? "leaves mobs alone" : "won't work";
+            String what = e.job == JobType.BODYGUARD ? "leaves mobs alone" : "won't work";
             Msg.send(p, "<green>" + e.name + " " + what + " in <white>" + area.describe() + "</white> (y " + area.minY() + " to " + area.maxY() + ") now.");
         } else {
             plugin.manager().setArea(e, area);
@@ -509,8 +509,9 @@ public final class OutOfBody implements Listener {
             Msg.error(p, "Placed chests are turned off in the config.");
             return;
         }
-        if (!plugin.estate().mayWork(e.owner, b.getWorld(), b.getX(), b.getY(), b.getZ())) {
-            Msg.error(p, "That chest is on someone else's land.");
+        if (!p.hasPermission("employees.admin")
+                && !plugin.manager().mayUseChest(e.owner, b.getWorld().getName(), b.getX(), b.getY(), b.getZ())) {
+            Msg.error(p, "Someone else's employees already use that chest.");
             return;
         }
         String what = b.getType().name().toLowerCase(Locale.ROOT).replace('_', ' ');

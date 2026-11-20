@@ -38,9 +38,9 @@ public final class Prompt implements Listener {
     public void onChat(AsyncChatEvent ev) {
         Waiting w = WAITING.remove(ev.getPlayer().getUniqueId());
         if (w == null) return;
+        if (System.currentTimeMillis() > w.until()) return;   // expired: not ours any more, let the message through as ordinary chat
         ev.setCancelled(true);
         Player p = ev.getPlayer();
-        if (System.currentTimeMillis() > w.until()) return;
         String t = PlainTextComponentSerializer.plainText().serialize(ev.message()).trim();
         Bukkit.getScheduler().runTask(plugin, () -> {
             if (t.equalsIgnoreCase("cancel") || t.isEmpty()) Msg.send(p, "<gray>Cancelled.");

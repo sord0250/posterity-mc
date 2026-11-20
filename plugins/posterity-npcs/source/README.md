@@ -18,12 +18,9 @@ now.) Each employee is a vanilla **Mannequin**: a player-shaped entity with a re
 label. Mannequins have no AI of their own, so ArcEmployees moves them itself. Everyone works at the
 speed of a survival player with the same tool.
 
-- Server: Paper 26.2 or newer (Java 25).
+- Server: Paper 26.2 (Java 25).
 - Optional: **Vault** and an economy (EssentialsX) for selling to merchants, **VirtualChests** (deliveries and storage), **WorldEdit** (selecting areas, reading
-  schematics, and the built-in starter houses - without it, picking a work area or no-work zone by
-  flying over it still works fine; make sure whichever WorldEdit build you install supports your
-  server's exact version, since a mismatched one can fail badly instead of just disabling itself),
-  **ArcShop** (merchant prices), **EssentialsX** (mail to offline owners),
+  schematics), **ArcShop** (merchant prices), **EssentialsX** (mail to offline owners),
   **CoreProtect** (logs employees' block changes).
 
 ## Contents
@@ -365,14 +362,13 @@ after it. Click a job icon to see only that job. The bottom row has:
 | Control panel | Link buttons and levers to actions |
 | Merchant prices | Today's sell prices |
 
-Clicking an employee opens their **card**: a short status line and buttons for the everyday things
-(work area, storage, pantry, home, backpack, pause, bring them here, fire), plus a **Details** button
-for what they're doing, their food, home, mood and working day. **More settings…** opens their full
-menu: the job's own settings (filter, build, herd size, trades), no-work zones, supplies, skin,
-rename, selling, recent problems and the rest. None of these teleport you to an employee - only
-**Bring here** (or `/emp move`) moves them to you. Closing a backpack or chest you opened from a menu
-takes you back to it. Anything that needs typing (a name, a number, a link) is asked for in chat;
-type `cancel` to stop.
+Clicking an employee opens their **card**: a window with what they're doing now, their food, home,
+mood and working day, where they work and deliver, and buttons for the everyday things (work area,
+storage, pantry, home, backpack, pause, go to them, bring them here, fire). **More settings…** opens
+their full menu: the job's own settings (filter, build, herd size, trades), no-work zones, supplies,
+skin, rename, selling, recent problems and the rest. Closing a
+backpack or chest you opened from a menu takes you back to it. Anything that needs typing (a name, a
+number, a link) is asked for in chat; type `cancel` to stop.
 
 ---
 
@@ -965,7 +961,7 @@ BlueMap behind nginx (`deploy/map-nginx.conf`), so set that up for them.
 | `/emp hire <job> [name]` | Hire the villager you're looking at (or shift-right-click it); with no villager, admins hire someone where they stand |
 | `/emp list` · `/emp jobs` · `/emp info <name>` | Who works for you, what jobs exist, one employee's details |
 | `/emp area <name> worldedit \| radius <r> \| pos1 \| pos2 \| bedrock \| show \| tp [nw\|ne\|sw\|se]` | Work area; `tp` takes you to the middle or a corner |
-| `/emp move <name>` | Bring them (and their area) to you |
+| `/emp move <name>` · `/emp tp <name>` | Bring them (and their area) to you · go to them |
 | `/emp storage <name> vc <n> \| chest \| backpack` | Where they deliver |
 | `/emp supply <name> add <n> \| add chest \| remove <n> \| team on\|off` | Where they get materials |
 | `/emp filter <name> add\|remove <block...> \| clear \| reset` | Miner: looks for · smelter: smelts · quarry: throws away (names, `#tags`, `ores`) |

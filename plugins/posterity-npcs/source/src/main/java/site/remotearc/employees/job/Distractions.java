@@ -105,6 +105,10 @@ public final class Distractions {
             Entity mate = someoneToChatWith(w);
             if (mate != null) own = new Chat(mate, ticks(r));
         }
+        if (own == null && r.nextInt(3) == 0) {
+            Hangouts.Spot spot = Hangouts.find(w);
+            if (spot != null) own = new Hangout(spot.at(), spot.label(), ticks(r) * 2);
+        }
         if (own == null) own = Wander.find(w, ticks(r));
         if (own != null) own.label = "Relaxing";
         return own;
@@ -215,7 +219,7 @@ public final class Distractions {
 
     private static boolean threatened(Worker w) {
         if (w.attacker() != null) return true;
-        if (w.e.job != JobType.GUARD && w.e.job != JobType.BODYGUARD) return false;
+        if (w.e.job != JobType.BODYGUARD) return false;
         return !w.world().getNearbyEntities(w.e.location, 16, 8, 16, en -> en instanceof org.bukkit.entity.Enemy).isEmpty();
     }
 
@@ -735,6 +739,46 @@ public final class Distractions {
                 Worker.Move m = walkNear(w, to, 2.0);
                 if (m == Worker.Move.FAILED) return Result.DONE;
                 if (m == Worker.Move.ARRIVED) there = true;
+                return Result.RUNNING;
+            }
+            if (w.random().nextInt(60) == 0) {
+                Location l = w.e.location;
+                double a = w.random().nextDouble() * Math.PI * 2;
+                w.lookAt(l.getX() + Math.cos(a) * 8, l.getY() + 1.62 + w.random().nextInt(4), l.getZ() + Math.sin(a) * 8);
+            }
+            return Result.RUNNING;
+        }
+    }
+
+    /** Walks to a build labeled as a hangout spot (/employees build \<name> label \<text>) and spends a while there. */
+    static final class Hangout extends Distraction {
+        private final Vector to;
+        private final String what;
+        private Pathfinder.Goal goal;
+        private boolean there;
+
+        Hangout(Vector to, String what, int length) {
+            super(length);
+            this.to = to;
+            this.what = what;
+        }
+
+        @Override
+        String doing(Worker w) {
+            return there ? "hanging out at " + what : "heading to " + what;
+        }
+
+        @Override
+        Result step(Worker w) {
+            if (!there) {
+                if (goal == null) goal = Pathfinder.near(to.getX(), to.getY(), to.getZ(), 2.0, 3, 2);
+                switch (w.walk(goal, to)) {
+                    case FAILED -> {
+                        return Result.DONE;
+                    }
+                    case ARRIVED -> there = true;
+                    default -> { }
+                }
                 return Result.RUNNING;
             }
             if (w.random().nextInt(60) == 0) {

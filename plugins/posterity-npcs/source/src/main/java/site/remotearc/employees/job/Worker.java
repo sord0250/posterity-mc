@@ -64,6 +64,8 @@ public final class Worker {
     private boolean partialPath;
     private Pathfinder.Goal replanFor;
     private int replans;
+    /** Not before this tick: spaces out replans instead of running a full search every single tick while stuck. */
+    private long nextReplanAt;
     private int walkTicks;
     /** Block being dug out of the way on the current path, with its progress. */
     private BlockPos digging;
@@ -303,7 +305,9 @@ public final class Worker {
         try {
             result = task.tick(this);
         } catch (RuntimeException ex) {
-            plugin.getLogger().log(Level.WARNING, e.name + " hit an error while working", ex);
+            if (cooldownReady("task-error-log", 20 * 60)) {
+                plugin.getLogger().log(Level.WARNING, e.name + " hit an error while working (repeats are throttled to once a minute)", ex);
+            }
             result = Task.Result.FAILED;
         }
         if (result != Task.Result.RUNNING) {
@@ -515,6 +519,9 @@ public final class Worker {
         e.stats.itemsDelivered += amount;
         stash(leftover);
         plugin.manager().markDirty();
+        // The virtual chest it just delivered to saves instantly; save this employee's backpack soon
+        // too (not on the usual 30s timer), so a crash in between can't dupe or lose what moved.
+        if (amount > 0 && e.storage.kind() == StorageTarget.Kind.VIRTUAL) plugin.manager().saveSoon();
     }
 
     /** A delivery could not happen at all; try again after the usual interval. */
@@ -709,6 +716,7 @@ public final class Worker {
             if (goal != replanFor) {
                 replanFor = goal;
                 replans = 0;
+                nextReplanAt = 0;
             }
             clearPath();
             partialPath = pf.partial();
@@ -766,7 +774,9 @@ public final class Worker {
     /** At the end of a path: arrived, or (for a part-way path) plan the next stretch. */
     private Move endOfPath() {
         if (!partialPath) return Move.ARRIVED;
+        if (now < nextReplanAt) return Move.MOVING;   // waiting out the gap between replans; doesn't count as one
         if (++replans > 12 || path.size() < 3) return Move.FAILED;   // not getting any closer: give it up
+        nextReplanAt = now + 5;
         pathGoal = null;   // the next walk() call plans again from here
         return Move.MOVING;
     }
@@ -987,8 +997,7 @@ public final class Worker {
             zones = zp.boxes(e);
             zonesVersion = zp.version();
         }
-        return (zones.isEmpty() || site.remotearc.employees.ZonePresets.outside(zones, world().getName(), x, y, z))
-                && plugin.estate().mayWork(e.owner, world(), x, y, z);   // not on someone else's land (ArcEstate)
+        return zones.isEmpty() || site.remotearc.employees.ZonePresets.outside(zones, world().getName(), x, y, z);
     }
 
     /** Outside its no-work zones (fighting a mob on a friend's land is fine; changing blocks there isn't). */
@@ -1139,9 +1148,20 @@ public final class Worker {
             left = Items.add(e.backpack, left);
         }
         if (!left.isEmpty() && e.storage.kind() == StorageTarget.Kind.VIRTUAL && plugin.vchests().available()) {
+            int before = left.size();
             left = plugin.vchests().deposit(e.owner, e.storage.chestNumber(), left);
+            // The virtual chest saves instantly; save this employee's backpack soon too, not on the
+            // usual 30s timer, so a crash in between can't make the same items count twice (or vanish).
+            if (left.size() != before) plugin.manager().saveSoon();
         }
-        for (ItemStack s : left) world().dropItem(e.location, s);
+        if (!left.isEmpty()) {
+            for (ItemStack s : left) world().dropItem(e.location, s);
+            // Everything is full (backpack, its chest, its overflow): flagged instead of just vanishing onto the ground unnoticed.
+            if (cooldownReady("drop-warning", 20 * 60)) {
+                plugin.manager().notifyOwner(e, "<yellow>" + e.name + " had nowhere to put some of what it was carrying "
+                        + "(backpack and storage both full) and dropped it on the ground.", true);
+            }
+        }
         plugin.manager().markDirty();
     }
 }

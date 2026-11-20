@@ -69,6 +69,8 @@ public final class VillagerHiring implements Listener {
     private final NamespacedKey settlerKey;
     /** Where a settler leashes back to while it hasn't been hired yet ("world;x;y;z"). */
     private final NamespacedKey coreKey;
+    /** When a settler arrived (epoch millis): past settlerExpireDays unhired, it stops being invulnerable instead of staying safe forever. */
+    private final NamespacedKey settledAtKey;
     /** A settler that hasn't been given a role wanders no further than this from its kingdom's Core. */
     private static final int SETTLER_LEASH_RADIUS = 50;
     /** Reserved for a player: the player's UUID, the job, and when it ends (epoch millis, 0 = never). */
@@ -87,6 +89,9 @@ public final class VillagerHiring implements Listener {
     private final java.util.Map<java.util.UUID, Integer> walking = new java.util.HashMap<>();
     /** Founders who've had their settlers already: they come with a player's first kingdom only. */
     private final Set<java.util.UUID> settled = new java.util.HashSet<>();
+    /** Un-hired settlers, so leashing them to their Core doesn't need a scan of every villager in every world. */
+    private final Set<java.util.UUID> settlerIds = new java.util.HashSet<>();
+    private boolean settlerIdsScanned;
 
     /** How villagers can come into the world other than the normal way. */
     private static final Set<SpawnReason> UNNATURAL = EnumSet.of(SpawnReason.SPAWNER_EGG, SpawnReason.DISPENSE_EGG,
@@ -108,6 +113,7 @@ public final class VillagerHiring implements Listener {
         this.personalityKey = new NamespacedKey(plugin, "employee-personality");
         this.settlerKey = new NamespacedKey(plugin, "kingdom-settler");
         this.coreKey = new NamespacedKey(plugin, "kingdom-settler-core");
+        this.settledAtKey = new NamespacedKey(plugin, "kingdom-settler-since");
         this.reservedKey = new NamespacedKey(plugin, "reserved-for");
         this.reservedJobKey = new NamespacedKey(plugin, "reserved-job");
         this.file = new File(plugin.getDataFolder(), "villager-hiring.yml");
@@ -159,10 +165,6 @@ public final class VillagerHiring implements Listener {
         if (r != null && !r.owner().equals(p.getUniqueId()) && !p.hasPermission("employees.admin")) {
             String who = Bukkit.getOfflinePlayer(r.owner()).getName();
             return "That villager is waiting for " + (who == null ? "another player" : who) + " to hire it.";
-        }
-        Location at = v.getLocation();
-        if (!plugin.estate().mayWork(p.getUniqueId(), v.getWorld(), at.getBlockX(), at.getBlockY(), at.getBlockZ())) {
-            return "That villager lives on someone else's land.";
         }
         return null;
     }
@@ -327,6 +329,7 @@ public final class VillagerHiring implements Listener {
     /** A reserved villager that died is no longer waiting for anyone. */
     @EventHandler
     public void onDeath(org.bukkit.event.entity.EntityDeathEvent ev) {
+        settlerIds.remove(ev.getEntity().getUniqueId());
         if (ev.getEntity() instanceof Villager && reserved.remove(ev.getEntity().getUniqueId()) != null) {
             walking.remove(ev.getEntity().getUniqueId());
             save();
@@ -367,7 +370,7 @@ public final class VillagerHiring implements Listener {
             if (names.contains(name)) name = name + (i + 1);
             String given = name;
             names.add(given);
-            at.getWorld().spawn(at, Villager.class, v -> {
+            Villager spawned = at.getWorld().spawn(at, Villager.class, v -> {
                 v.setAdult();
                 v.customName(net.kyori.adventure.text.Component.text(given));
                 v.setCustomNameVisible(true);
@@ -378,7 +381,9 @@ public final class VillagerHiring implements Listener {
                 pdc.set(formerKey, PersistentDataType.BYTE, (byte) 1);    // no baby replaces it when hired
                 pdc.set(settlerKey, PersistentDataType.STRING, founder.toString());
                 pdc.set(coreKey, PersistentDataType.STRING, coreTag(core));
+                pdc.set(settledAtKey, PersistentDataType.LONG, System.currentTimeMillis());
             });
+            settlerIds.add(spawned.getUniqueId());
             at.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, at.clone().add(0, 1, 0), 20, 0.4, 0.6, 0.4);
         }
         core.getWorld().playSound(core, Sound.ENTITY_VILLAGER_CELEBRATE, 1f, 1f);
@@ -410,16 +415,32 @@ public final class VillagerHiring implements Listener {
      * walked back (teleported) to just outside the Core.
      */
     private void leashSettlers() {
-        for (World w : Bukkit.getWorlds()) {
-            for (Villager v : w.getEntitiesByClass(Villager.class)) {
-                if (!v.getPersistentDataContainer().has(settlerKey, PersistentDataType.STRING)) continue;
-                String tag = v.getPersistentDataContainer().get(coreKey, PersistentDataType.STRING);
-                if (tag == null) continue;
-                Location core = parseCoreTag(tag);
-                if (core == null || core.getWorld() != w) continue;
-                if (v.getLocation().distanceSquared(core) > (double) SETTLER_LEASH_RADIUS * SETTLER_LEASH_RADIUS) {
-                    v.teleport(standable(core));
+        if (!settlerIdsScanned) {
+            // Once, at startup: settlers from a previous run are only known by their PDC tag until then.
+            settlerIdsScanned = true;
+            for (World w : Bukkit.getWorlds()) {
+                for (Villager v : w.getEntitiesByClass(Villager.class)) {
+                    if (v.getPersistentDataContainer().has(settlerKey, PersistentDataType.STRING)) settlerIds.add(v.getUniqueId());
                 }
+            }
+        }
+        for (var it = settlerIds.iterator(); it.hasNext(); ) {
+            Entity en = Bukkit.getEntity(it.next());
+            if (!(en instanceof Villager v) || !v.isValid()) {
+                it.remove();
+                continue;
+            }
+            int expireDays = plugin.settings().settlerExpireDays;
+            if (expireDays > 0 && v.isInvulnerable()) {
+                Long since = v.getPersistentDataContainer().get(settledAtKey, PersistentDataType.LONG);
+                if (since != null && System.currentTimeMillis() - since > expireDays * 86_400_000L) v.setInvulnerable(false);
+            }
+            String tag = v.getPersistentDataContainer().get(coreKey, PersistentDataType.STRING);
+            if (tag == null) continue;
+            Location core = parseCoreTag(tag);
+            if (core == null || core.getWorld() != v.getWorld()) continue;
+            if (v.getLocation().distanceSquared(core) > (double) SETTLER_LEASH_RADIUS * SETTLER_LEASH_RADIUS) {
+                v.teleport(standable(core));
             }
         }
     }
@@ -499,6 +520,7 @@ public final class VillagerHiring implements Listener {
         world.playSound(at, Sound.ENTITY_VILLAGER_YES, 1f, 1f);
         if (reserved.remove(v.getUniqueId()) != null) save();
         walking.remove(v.getUniqueId());
+        settlerIds.remove(v.getUniqueId());
         v.remove();
 
         Employee e = mgr.hire(p.getUniqueId(), job, name, at);

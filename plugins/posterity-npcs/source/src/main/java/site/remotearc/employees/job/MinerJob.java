@@ -211,28 +211,33 @@ final class MinerJob implements Job {
         scanning = true;
         Bukkit.getScheduler().runTaskAsynchronously(w.plugin(), () -> {
             List<BlockPos> hits = new ArrayList<>();
-            int worldMin = world.getMinHeight();
-            for (int y = minY; y <= maxY && hits.size() < PER_CHUNK; y++) {
-                if (snap.isSectionEmpty((y - worldMin) >> 4)) {
-                    y = ((((y - worldMin) >> 4) + 1) << 4) + worldMin - 1;
-                    continue;
-                }
-                for (int x = x0; x <= x1; x++) {
-                    for (int z = z0; z <= z1; z++) {
-                        Material m = snap.getBlockType(x & 15, y, z & 15);
-                        if (!targets.contains(m)) continue;
-                        if (!xray && !openInSnapshot(snap, x & 15, y, z & 15, worldMin, maxY)) continue;
-                        hits.add(new BlockPos(x, y, z));
+            try {
+                int worldMin = world.getMinHeight();
+                for (int y = minY; y <= maxY && hits.size() < PER_CHUNK; y++) {
+                    if (snap.isSectionEmpty((y - worldMin) >> 4)) {
+                        y = ((((y - worldMin) >> 4) + 1) << 4) + worldMin - 1;
+                        continue;
+                    }
+                    for (int x = x0; x <= x1; x++) {
+                        for (int z = z0; z <= z1; z++) {
+                            Material m = snap.getBlockType(x & 15, y, z & 15);
+                            if (!targets.contains(m)) continue;
+                            if (!xray && !openInSnapshot(snap, x & 15, y, z & 15, worldMin, maxY)) continue;
+                            hits.add(new BlockPos(x, y, z));
+                        }
                     }
                 }
+            } catch (RuntimeException ex) {
+                w.plugin().getLogger().log(java.util.logging.Level.WARNING, "Ore scan failed for " + w.e.name, ex);
+            } finally {
+                Bukkit.getScheduler().runTask(w.plugin(), () -> {
+                    scanning = false;
+                    if (gen != generation) return;
+                    long key = chunkKey(cx, cz);
+                    if (hits.isEmpty()) found.remove(key);
+                    else found.put(key, hits);
+                });
             }
-            Bukkit.getScheduler().runTask(w.plugin(), () -> {
-                scanning = false;
-                if (gen != generation) return;
-                long key = chunkKey(cx, cz);
-                if (hits.isEmpty()) found.remove(key);
-                else found.put(key, hits);
-            });
         });
     }
 

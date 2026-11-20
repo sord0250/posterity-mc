@@ -583,8 +583,7 @@ public final class PlanMode implements Listener {
         ev.setCancelled(true);
         Block target = placed.getRelative(s.face);
         BlockData there = get(s, target.getX(), target.getY(), target.getZ());
-        if (!target.isReplaceable() || (there != null && !there.getMaterial().isAir())
-                || !(p.hasPermission("employees.admin") || plugin.estate().mayWork(p.getUniqueId(), target.getWorld(), target.getX(), target.getY(), target.getZ()))) {
+        if (!target.isReplaceable() || (there != null && !there.getMaterial().isAir())) {
             reshowLater(p, s, placed);
             return;
         }

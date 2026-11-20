@@ -67,7 +67,7 @@ public final class HomeWork {
         // Duty first: a bodyguard following its owner, anyone being attacked, and guards with enemies about don't go off to build.
         // (It keeps going after moving in, at the finished-percent mark, until the last block of the roof is on.)
         if (!w.job.wandersHome(w) || w.attacker() != null) return false;
-        if ((e.job == JobType.GUARD || e.job == JobType.BODYGUARD)
+        if (e.job == JobType.BODYGUARD
                 && !w.world().getNearbyEntities(e.location, 16, 8, 16, en -> en instanceof org.bukkit.entity.Enemy).isEmpty()) return false;
         if (!w.world().getName().equals(o.world)) return false;
         if (e.siteBed.horizontalDistanceSq(e.location.getX(), e.location.getZ()) > MAX_DISTANCE * MAX_DISTANCE) return false;

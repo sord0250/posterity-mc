@@ -31,6 +31,10 @@ public final class BuildOrder {
     public boolean flip;
     /** Break whatever is in the way where the blueprint has air. */
     public boolean clearAir = true;
+    /** Break a pre-existing block that's in the way of one the blueprint wants there; off just skips it, leaving it standing. */
+    public boolean breakBlocks = true;
+    /** A name for this build as a hangout spot (a tavern, a park...); null means it isn't one. Off-duty employees of the same owner (or their trusted network) gather at labeled, finished builds instead of just loitering at their own post. */
+    public String hangoutLabel;
     /** Off while the owner previews and lines it up; the builder waits. */
     public boolean started;
     public boolean finished;
@@ -515,6 +519,7 @@ public final class BuildOrder {
         s.set("rotation", rotation);
         s.set("flip", flip);
         s.set("clear-air", clearAir);
+        s.set("break-blocks", breakBlocks);
         s.set("started", started);
         s.set("finished", finished);
         s.set("layer", layer);
@@ -529,6 +534,7 @@ public final class BuildOrder {
             });
             s.set("tunnel", t);
         }
+        if (hangoutLabel != null) s.set("hangout-label", hangoutLabel);
         if (dismantle) s.set("dismantle", true);
         if (planned) s.set("planned", true);
         if (!follow) s.set("follow", false);
@@ -547,12 +553,14 @@ public final class BuildOrder {
         o.rotation = Math.floorMod(s.getInt("rotation"), 4);
         o.flip = s.getBoolean("flip");
         o.clearAir = s.getBoolean("clear-air", true);
+        o.breakBlocks = s.getBoolean("break-blocks", true);
         o.started = s.getBoolean("started");
         o.finished = s.getBoolean("finished");
         o.layer = Math.max(0, s.getInt("layer"));
         o.repair = s.getBoolean("repair");
         // Orders from before the ground was left out were built with it: keep building (and taking down) it.
         o.keepGround = s.contains("ground") ? "keep".equals(s.getString("ground")) : true;
+        o.hangoutLabel = s.getString("hangout-label");
         o.dismantle = s.getBoolean("dismantle");
         o.clearAround = !"leave".equals(s.getString("around"));
         for (String t : s.getStringList("tunnel")) {

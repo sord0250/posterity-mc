@@ -66,29 +66,27 @@ final class Trees {
     }
 
     /**
-     * One pass over the area: returns trunk bottoms (logs on soil), records every
-     * sapling it sees as a planting spot, and forgets spots that can no longer
-     * hold a sapling.
+     * Looks at one column for a trunk base (logs on soil) or a sapling planting
+     * spot. Called a column at a time so a huge area is spread over many ticks
+     * instead of scanned all at once.
      */
-    static List<BlockPos> scan(World w, WorkArea a, Map<BlockPos, Material> spots) {
-        List<BlockPos> bases = new ArrayList<>();
-        for (int x = a.minX(); x <= a.maxX(); x++) {
-            for (int z = a.minZ(); z <= a.maxZ(); z++) {
-                if (!w.isChunkLoaded(x >> 4, z >> 4)) continue;
-                Material below = w.getType(x, a.minY() - 1, z);
-                for (int y = a.minY(); y <= a.maxY(); y++) {
-                    Material m = w.getType(x, y, z);
-                    if (isSoil(below)) {
-                        if (SAPLING_FOR_LOG.containsKey(m)) bases.add(new BlockPos(x, y, z));
-                        else if (isSapling(m)) spots.putIfAbsent(new BlockPos(x, y, z), m);
-                    }
-                    below = m;
-                }
+    static void scanColumn(World w, WorkArea a, Map<BlockPos, Material> spots, int x, int z, List<BlockPos> basesOut) {
+        if (!w.isChunkLoaded(x >> 4, z >> 4)) return;
+        Material below = w.getType(x, a.minY() - 1, z);
+        for (int y = a.minY(); y <= a.maxY(); y++) {
+            Material m = w.getType(x, y, z);
+            if (isSoil(below)) {
+                if (SAPLING_FOR_LOG.containsKey(m)) basesOut.add(new BlockPos(x, y, z));
+                else if (isSapling(m)) spots.putIfAbsent(new BlockPos(x, y, z), m);
             }
+            below = m;
         }
+    }
+
+    /** Forgets spots that can no longer hold a sapling; call once a full scan pass finishes. */
+    static void pruneSpots(World w, WorkArea a, Map<BlockPos, Material> spots) {
         spots.keySet().removeIf(p -> !a.contains(p)
                 || (w.isChunkLoaded(p.x() >> 4, p.z() >> 4) && !isSoil(w.getType(p.x(), p.y() - 1, p.z()))));
-        return bases;
     }
 
     /** Measures the tree whose trunk includes {@code start}, or returns null if it is not a tree. */

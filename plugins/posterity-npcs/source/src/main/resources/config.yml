@@ -54,6 +54,10 @@ villager-hiring:
   # many settler villagers to its Core. Only the founder can hire them, for
   # free, picking each one's job. 0 turns it off.
   kingdom-settlers: 2
+  # A settler can't be hurt or zombie-converted until it's hired. Left alone
+  # this long (days), it stops being invulnerable instead of staying safe
+  # forever. 0 = never expires.
+  settler-expire-days: 7
   replenish:
     # A hired villager's village gets a baby villager in its place, after a
     # delay, so villages don't empty out. Only up to the number of villagers
@@ -126,7 +130,7 @@ schedule:
   work-end: 18
   sleep-start: 21
   # These stay on duty all evening and night.
-  night-shift-jobs: [guard, bodyguard]
+  night-shift-jobs: [bodyguard]
 
 # work-speed: 1.0 = exactly as fast as a survival player holding the same tool
 # (vanilla mining times, the pause between blocks, one right-click per 4 ticks).
@@ -248,11 +252,14 @@ jobs:
     # Feed and buckets kept in the backpack.
     reserve: 64
 
-  # Patrols its area and fights hostile mobs within 8 blocks of it, at
-  # player sword speed. Torches in its backpack light up dark ground.
-  guard:
+  # Patrols its post (its work area) and fights hostile mobs that come near,
+  # at player sword speed, and (with torches in its backpack) lights up dark
+  # ground. Told to follow instead (/employees follow <name>), it goes with
+  # you and guards you the same way, within protect-radius; /employees stay
+  # <name> sends it back to its post.
+  bodyguard:
     # What a villager asks for to take this job (plus the food under hiring).
-    hire-items: [IRON_SWORD]
+    hire-items: [IRON_SWORD, SHIELD]
     tool: IRON_SWORD
     work-speed: 1.0
     area-radius: 16
@@ -262,20 +269,9 @@ jobs:
     max-area-height: 64
     # Mobs it leaves alone (neutral ones that would start fights it can't finish).
     ignore: [ENDERMAN, ZOMBIFIED_PIGLIN, PIGLIN, PIGLIN_BRUTE, WARDEN, ENDER_DRAGON, WITHER]
-    # Torches kept for lighting.
-    reserve: 64
-
-  # Follows you around and fights mobs near you (or guards its post, its
-  # work area, when told to stay: /employees stay <name>). With torches in its
-  # backpack it lights dark spots around you. Picks up what the mobs drop.
-  bodyguard:
-    # What a villager asks for to take this job (plus the food under hiring).
-    hire-items: [IRON_SWORD, SHIELD]
-    tool: IRON_SWORD
-    work-speed: 1.0
-    # How far from you it goes after mobs.
+    # How far from you it goes after mobs while following.
     protect-radius: 12
-    area-radius: 6
+    # Torches kept for lighting.
     reserve: 64
 
   # Works a trading hall: makes the trades you pick (/employees trades <name>)
@@ -456,7 +452,6 @@ virtual-chests:
     builder: 300
     smelter: 350
     rancher: 400
-    guard: 450
     bodyguard: 500
     trader: 550
     courier: 600
@@ -465,11 +460,15 @@ virtual-chests:
 names: [Ada, Arlo, Bea, Bram, Cleo, Dex, Edie, Fern, Gus, Hazel, Ivo, Juno, Kit, Lou, Mabel,
         Ned, Opal, Pip, Quill, Rosa, Sid, Tess, Ugo, Vera, Wren, Xavi, Yara, Zed]
 
-# The web map and 3D build planner. BlueMap's map is served through nginx at
-# public-url (signed in from the game with /map); the planner (this plugin)
-# listens on bind:port and nginx puts it at public-url + "arc/".
+# The web map and 3D build planner. Off by default: turning it on needs your
+# own domain (or subdomain/path) reverse-proxied to bind:port, with BlueMap's
+# map alongside it at public-url (signed in from the game with /map); the
+# planner (this plugin) listens on bind:port and your proxy puts it at
+# public-url + "arc/". public-url below is only an example of the shape to
+# use (a subdomain or a path on a site you already run) - put in your own,
+# e.g. "https://spencerord.me/mc/".
 web:
-  enabled: true
-  public-url: "https://your-domain.example/map/"
+  enabled: false
+  public-url: "https://spencerord.me/mc/"
   bind: 127.0.0.1
   port: 8101

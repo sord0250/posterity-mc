@@ -640,14 +640,15 @@ final class EmployeesCommand implements TabExecutor {
                     + Describe.esc(Describe.filterText(e, 4)) + "</white> from your employees' storage, with coal or charcoal.";
             case RANCHER -> "<gray>Fence in some animals in the area: " + n + " keeps " + plugin.settings().herdSize
                     + " of each kind, breeding and culling, and shears sheep. Feed comes from your farmer's storage.";
-            case GUARD -> "<gray>" + n + " patrols the area (" + e.area.describe() + ") and fights hostile mobs that come near."
-                    + " Put torches in their backpack and they'll light up dark spots too.";
             case TRADER -> "<gray>Set " + n + "'s area over your trading hall, then pick the trades to make: <white>/employees trades " + n
                     + "</white> (or the Trades button in their menu).";
             case COURIER -> "<gray>Give " + n + " routes to carry things along: <white>/employees route " + n + " add \\<from> \\<to></white>"
                     + " (a /chest number, or <white>look</white> for the chest you're looking at), or the Routes button in their menu.";
-            case BODYGUARD -> "<gray>" + n + " follows you and fights mobs near you. <white>/employees stay " + n + "</white> sends them back"
-                    + " to guard this spot; <white>/employees follow " + n + "</white> brings them along again.";
+            case BODYGUARD -> e.following
+                    ? "<gray>" + n + " follows you and fights mobs near you. <white>/employees stay " + n + "</white> sends them to guard"
+                        + " a post instead (their area, " + e.area.describe() + "); <white>/employees follow " + n + "</white> brings them along again."
+                    : "<gray>" + n + " patrols the area (" + e.area.describe() + ") and fights hostile mobs that come near. Put torches in their"
+                        + " backpack and they'll light up dark spots too. <white>/employees follow " + n + "</white> has them follow you instead.";
         }));
         if (job != JobType.BUILDER) AreaPreview.show(plugin, p, e.area, 200);
     }
@@ -679,11 +680,16 @@ final class EmployeesCommand implements TabExecutor {
     private void fire(CommandSender s, Employee e, String label, String[] args) {
         if (args.length < 3 || !args[2].equalsIgnoreCase("confirm")) {
             Msg.send(s, "<yellow>Really fire " + e.name + "? Their backpack goes to you; the tools and food you hired them with aren't given back. "
-                    + "<click:run_command:'/" + label + " fire " + e.name + " confirm'><red><u>[Fire " + e.name + "]</u></red></click>");
+                    + "<click:run_command:'/" + label + " fire " + ref(s, e) + " confirm'><red><u>[Fire " + e.name + "]</u></red></click>");
             return;
         }
         mgr().fire(e, s instanceof Player p ? p : null);
         Msg.send(s, "<gray>You fired " + e.name + ".");
+    }
+
+    /** Names the exact employee meant, so a confirm link can't be re-resolved onto a different one with the same name. */
+    private static String ref(CommandSender s, Employee e) {
+        return s instanceof Player p && e.owner.equals(p.getUniqueId()) ? e.name : e.ownerName() + ":" + e.name;
     }
 
     private void rename(CommandSender s, Employee e, String[] args) {
@@ -804,10 +810,6 @@ final class EmployeesCommand implements TabExecutor {
         Block head = House.bedHead(p.getTargetBlockExact(6));
         if (head == null) {
             new site.remotearc.employees.gui.HomeMenu(plugin, e, null, 0).open(p);
-            return;
-        }
-        if (!plugin.estate().mayWork(p.getUniqueId(), head.getWorld(), head.getX(), head.getY(), head.getZ())) {
-            Msg.error(s, "That bed is on someone else's land.");
             return;
         }
         BlockPos bed = BlockPos.of(head);
@@ -1452,8 +1454,9 @@ final class EmployeesCommand implements TabExecutor {
             Msg.error(p, "Placed chests are turned off in the config.");
             return;
         }
-        if (!plugin.estate().mayWork(e.owner, b.getWorld(), b.getX(), b.getY(), b.getZ())) {
-            Msg.error(p, "That chest is on someone else's land.");
+        if (!p.hasPermission("employees.admin")
+                && !plugin.manager().mayUseChest(e.owner, b.getWorld().getName(), b.getX(), b.getY(), b.getZ())) {
+            Msg.error(p, "Someone else's employees already use that chest.");
             return;
         }
         plugin.manager().setPantry(e, StorageTarget.chest(b));

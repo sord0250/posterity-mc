@@ -544,6 +544,7 @@ final class BuilderJob implements Job {
                     if (o.clearAir && needsClearing(b)) main.add(new Op(p, -1));
                 } else if (!BuildOrder.unbuildable(want) && !matches(b, want)) {
                     if (Ground.protectedBlock(b) && b.getType() != want.getMaterial()) continue;
+                    if (!o.breakBlocks && needsClearing(b)) continue;   // leave what's already there instead of breaking it
                     (attaches(want) ? later : main).add(new Op(p, idx));
                 }
             }

@@ -105,7 +105,6 @@ public interface Job {
             case BUILDER -> new BuilderJob();
             case SMELTER -> new SmelterJob();
             case RANCHER -> new RancherJob();
-            case GUARD -> new GuardJob();
             case BODYGUARD -> new BodyguardJob();
             case TRADER -> new TraderJob();
             case COURIER -> new CourierJob();

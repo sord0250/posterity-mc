@@ -122,6 +122,22 @@ final class BuildMenu extends Menu {
             button(25, icon(Material.CHEST, "<aqua>Materials and swaps", List.of("<gray>What's still needed, what's missing", "<gray>and what that would cost. Swap a block",
                     "<gray>for another, buy what's missing, or", "<gray>leave out the ground it stands on.", "", "<yellow>Click to open")), (p, c) ->
                     new MaterialsMenu(plugin, e, 0, this).open(p));
+            button(26, icon(o.hangoutLabel != null ? Material.CAMPFIRE : Material.OAK_SIGN,
+                    "<aqua>Hangout spot: " + (o.hangoutLabel != null ? "<green>" + Describe.esc(o.hangoutLabel) : "<red>off"), List.of(
+                    "<gray>Once it's finished, your off-duty", "<gray>employees (and ones from anyone", "<gray>who trusts you) may wander here",
+                    "<gray>instead of loitering at their own post.", "", "<yellow>Click to name it", o.hangoutLabel != null ? "<yellow>Right-click to turn off" : "")),
+                    (p, c) -> {
+                if (c.isRightClick() && o.hangoutLabel != null) {
+                    run(p, "build " + ref(p, e) + " label");
+                    redraw();
+                    return;
+                }
+                p.closeInventory();
+                Prompt.ask(p, "Name this hangout spot (a tavern, a park...)?", text -> {
+                    run(p, "build " + ref(p, e) + " label " + text);
+                    open(p);
+                });
+            });
             var around = icon(o.clearAround ? Material.DIAMOND_SHOVEL : Material.GRASS_BLOCK, "<aqua>Space round the build: " + (o.clearAround ? "<yellow>dug out" : "<green>left alone"), List.of(
                     "<gray>Blueprints often come with empty space", "<gray>round the outside. Dug out, whatever's", "<gray>there goes (your ground, a neighbour's",
                     "<gray>build). Left alone, only space inside", "<gray>the build (rooms, doorways) is cleared.", "",
@@ -141,6 +157,12 @@ final class BuildMenu extends Menu {
             button(29, icon(o.clearAir ? Material.IRON_SHOVEL : Material.WOODEN_SHOVEL, "<aqua>Clear the site: " + (o.clearAir ? "<green>on" : "<red>off"), List.of(
                     "<gray>On: breaks whatever is in the way", "<gray>where the blueprint has air.", "", "<yellow>Click to switch")), (p, c) -> {
                 run(p, "build " + ref(p, e) + " clear " + (o.clearAir ? "off" : "on"));
+                redraw();
+            });
+            button(28, icon(o.breakBlocks ? Material.NETHERITE_PICKAXE : Material.SHIELD, "<aqua>Break blocks in the way: " + (o.breakBlocks ? "<green>on" : "<red>off"), List.of(
+                    "<gray>On: breaks a block that's in the way", "<gray>of one the blueprint wants there.",
+                    "<gray>Off: leaves it standing and skips", "<gray>that spot instead.", "", "<yellow>Click to switch")), (p, c) -> {
+                run(p, "build " + ref(p, e) + " break " + (o.breakBlocks ? "off" : "on"));
                 redraw();
             });
             var craft = icon(e.craft ? Material.CRAFTING_TABLE : Material.BARREL, "<aqua>Craft missing blocks: " + (e.craft ? "<green>on" : "<red>off"), List.of(
@@ -175,7 +197,7 @@ final class BuildMenu extends Menu {
                         open(pl);
                     }, this::open).open(p));
         }
-        if (!plugin.settings().uploadUrl.isEmpty()) {
+        if (plugin.uploads().baseUrl() != null) {
             button(16, icon(Material.WRITABLE_BOOK, "<aqua>Upload a blueprint from your computer", List.of(
                     "<gray>Gives you a link to a web page:", "<gray>drop .schem, .schematic, .litematic,", "<gray>.nbt or .zip files on it and",
                     "<gray>they're added here.", "<gray>Best for files from Planet Minecraft,", "<gray>Wormhole and the like.",

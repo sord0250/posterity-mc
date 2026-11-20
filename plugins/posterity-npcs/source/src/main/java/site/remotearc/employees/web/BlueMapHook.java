@@ -98,6 +98,7 @@ public final class BlueMapHook {
             if (bw == null) continue;
             Map<String, Marker> plans = new HashMap<>(), trades = new HashMap<>(), staff = new HashMap<>();
             Map<UUID, String> stallOf = new HashMap<>();
+            var settings = plugin.settings();
             for (Employee e : plugin.manager().all()) {
                 if (e.job == JobType.TRADER) {
                     for (int i = 0; i < e.stalls.size(); i++) {
@@ -105,12 +106,13 @@ public final class BlueMapHook {
                         if (v != null) stallOf.put(v.getUniqueId(), e.name + "'s stall " + (i + 1));
                     }
                 }
-                if (e.location != null && e.location.getWorld() == w) {
+                if (settings.blueMapShowEmployees && e.location != null && e.location.getWorld() == w) {
                     Location l = e.location;
                     staff.put("emp-" + e.id, POIMarker.builder().label(e.name + " (" + e.job.display() + ")")
                             .detail("<b>" + esc(e.name) + "</b> · " + esc(e.job.display()) + " · " + esc(e.ownerName()) + "<br>" + esc(e.paused ? "Paused" : e.status))
                             .position(l.getX(), l.getY() + 1.8, l.getZ()).maxDistance(800).build());
                 }
+                if (!settings.blueMapShowPlans) continue;
                 BuildOrder o = e.build;
                 if (e.job != JobType.BUILDER || o == null || o.plan == null || !o.world.equals(w.getName())) continue;
                 var b = o.bounds();
@@ -131,7 +133,7 @@ public final class BlueMapHook {
                 plans.put("plan-" + e.id, m);
             }
             int n = 0;
-            for (Villager v : w.getEntitiesByClass(Villager.class)) {
+            for (Villager v : settings.blueMapShowTrades ? w.getEntitiesByClass(Villager.class) : List.<Villager>of()) {
                 if (v.getRecipes().isEmpty() || n++ >= 500) continue;
                 List<String> books = new ArrayList<>(), all = new ArrayList<>();
                 for (MerchantRecipe r : v.getRecipes()) {

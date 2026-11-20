@@ -74,7 +74,6 @@ public final class Describe {
             case SMELTER -> out.add("<gray>Smelted or cooked <white>" + NUM.format(st.itemsSmelted) + "</white> items");
             case RANCHER -> out.add("<gray>Bred <white>" + NUM.format(st.animalsBred) + "</white>, culled <white>"
                     + NUM.format(st.animalsCulled) + "</white>, sheared <white>" + NUM.format(st.sheepSheared) + "</white>");
-            case GUARD -> out.add("<gray>Fought off <white>" + NUM.format(st.mobsKilled) + "</white> mobs");
             case TRADER -> out.add("<gray>" + e.trades.size() + " trades picked; made <white>" + NUM.format(st.tradesMade) + "</white> trades");
             case COURIER -> out.add("<gray>" + e.routes.size() + " route" + (e.routes.size() == 1 ? "" : "s") + "; moved <white>"
                     + NUM.format(st.itemsMoved) + "</white> items");

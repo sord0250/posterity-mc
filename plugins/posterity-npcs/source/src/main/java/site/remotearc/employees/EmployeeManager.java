@@ -60,6 +60,8 @@ public final class EmployeeManager {
     private final Random random = new Random();
     private final List<BukkitTask> tasks = new ArrayList<>();
     private boolean dirty;
+    /** Whether an async write from a previous {@link #saveSoon()} is still in flight; skips starting another. */
+    private volatile boolean writing;
     private final EventLog events = new EventLog();
 
     public EventLog events() {
@@ -105,6 +107,40 @@ public final class EmployeeManager {
         }
     }
 
+    /**
+     * A chunk about to unload: lets any employee there finish its current
+     * task cleanly first (its own {@code end()} runs, same as an interrupt),
+     * instead of the entity just vanishing out from under it. In particular
+     * this properly unleashes a villager a trader is leading, rather than
+     * leaving it leashed to an entity that's about to disappear (vanilla
+     * then drops a free lead where it stands).
+     */
+    public void chunkUnloading(World w, int cx, int cz) {
+        for (Employee e : employees.values()) {
+            if (e.isLoaded() && w.equals(e.entity.getWorld())
+                    && (e.entity.getLocation().getBlockX() >> 4) == cx && (e.entity.getLocation().getBlockZ() >> 4) == cz) {
+                e.worker.interrupt();
+            }
+        }
+    }
+
+    /** A world unloading while the plugin keeps running: hold its employees (same as one not loaded yet at startup) instead of losing them. */
+    public void worldUnloaded(World w) {
+        List<Employee> leaving = new ArrayList<>();
+        for (Employee e : employees.values()) {
+            if (w.getName().equals(e.location.getWorld() != null ? e.location.getWorld().getName() : null)) leaving.add(e);
+        }
+        if (leaving.isEmpty()) return;
+        for (Employee e : leaving) {
+            if (e.worker != null) e.worker.interrupt();
+            despawn(e);
+            employees.remove(e.id);
+            store.preserve(e);
+        }
+        refreshTickets();
+        plugin.getLogger().info("Holding " + leaving.size() + " employee(s) until " + w.getName() + " loads again.");
+    }
+
     /** "Pip (builder) in build_studio" for a player's employees whose world isn't loaded right now. */
     public List<String> waitingFor(UUID owner) {
         List<String> out = new ArrayList<>();
@@ -128,7 +164,7 @@ public final class EmployeeManager {
             if (!Bukkit.getOnlinePlayers().isEmpty()) playerSeen();
         }, 100L, 20L * 30));
         tasks.add(Bukkit.getScheduler().runTaskTimer(plugin, () -> {
-            if (dirty) save();
+            if (dirty) saveSoon();
         }, 20L * 30, 20L * 30));
     }
 
@@ -153,6 +189,28 @@ public final class EmployeeManager {
     public void save() {
         store.save(employees.values());
         dirty = false;
+    }
+
+    /**
+     * Same end result as {@link #save()}, but the disk write happens off the
+     * main thread: only snapshotting live employee data (backpacks, encoded
+     * here) needs to be synchronous. Used for the routine every-30s autosave,
+     * where a blocking write would otherwise stall the whole server. Skips
+     * starting a new write while one is already in flight (debounced: the
+     * next dirty tick picks up anything that changed meanwhile).
+     */
+    public void saveSoon() {
+        if (writing) return;   // dirty stays true: the write in flight was snapshotted before this change
+        dirty = false;
+        writing = true;
+        String snap = store.snapshot(employees.values());
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                store.writeToDisk(snap);
+            } finally {
+                writing = false;
+            }
+        });
     }
 
     /** Nobody on the server this tick. */
@@ -192,8 +250,14 @@ public final class EmployeeManager {
     }
 
     /** Spawns the employee's Mannequin if it is missing and its chunk is loaded. */
+    /** Spawn attempts that failed even with its chunk loaded (something else blocked it); backed off instead of retried every tick. */
+    private final Map<UUID, Long> spawnRetryAt = new HashMap<>();
+
     private boolean ensureEntity(Employee e) {
-        if (e.isLoaded()) return true;
+        if (e.isLoaded()) {
+            spawnRetryAt.remove(e.id);
+            return true;
+        }
         if (e.entity != null) {
             byEntity.remove(e.entity.getUniqueId());
             e.entity = null;
@@ -203,8 +267,17 @@ public final class EmployeeManager {
             e.status = "Off shift: work site not loaded";
             return false;
         }
+        Long retryAt = spawnRetryAt.get(e.id);
+        long now = System.currentTimeMillis();
+        if (retryAt != null && now < retryAt) return false;
         spawn(e);
-        return e.isLoaded();
+        if (e.isLoaded()) {
+            spawnRetryAt.remove(e.id);
+            return true;
+        }
+        e.status = "Can't appear here right now (something's blocking it); trying again every few seconds";
+        spawnRetryAt.put(e.id, now + 5000);
+        return false;
     }
 
     private void spawn(Employee e) {
@@ -228,6 +301,10 @@ public final class EmployeeManager {
         });
         e.entity = m;
         byEntity.put(m.getUniqueId(), e);
+        if (!e.spill.isEmpty()) {
+            for (ItemStack s : e.spill) e.location.getWorld().dropItem(e.location, s);
+            e.spill.clear();
+        }
     }
 
     private void despawn(Employee e) {
@@ -330,6 +407,34 @@ public final class EmployeeManager {
         return n;
     }
 
+    // ── chest access (no land claims any more: a chest is "whoever's employee already uses it") ────
+
+    /** Whose employee already delivers to, pulls from, or eats from this chest, or null if nobody does yet. */
+    public UUID chestClaimant(String world, int x, int y, int z) {
+        for (Employee e : employees.values()) {
+            if (chestHere(e.storage, world, x, y, z) || chestHere(e.pantry, world, x, y, z)) return e.owner;
+            for (StorageTarget t : e.supply) if (chestHere(t, world, x, y, z)) return e.owner;
+        }
+        return null;
+    }
+
+    private static boolean chestHere(StorageTarget t, String world, int x, int y, int z) {
+        if (t == null || t.kind() != StorageTarget.Kind.CHEST || t.pos() == null) return false;
+        return t.world().equals(world) && t.pos().x() == x && t.pos().y() == y && t.pos().z() == z;
+    }
+
+    /**
+     * True if nobody's employee uses this chest yet, or it's already one of
+     * {@code player}'s own (or someone who trusts them uses it). False once
+     * it's claimed by somebody else, so NPCs and /sort never quietly reach
+     * into a stranger's chest; with no land claims, this is all there is to
+     * tell "mine" from "theirs".
+     */
+    public boolean mayUseChest(UUID player, String world, int x, int y, int z) {
+        UUID claimant = chestClaimant(world, x, y, z);
+        return claimant == null || claimant.equals(player) || plugin.managers().trusts(claimant, player);
+    }
+
     /**
      * Finds an employee by name for a command sender: their own first; admins
      * may also name anyone's (as "Name" if unique, or "Owner:Name").
@@ -376,7 +481,7 @@ public final class EmployeeManager {
 
     /** Guards and bodyguards fight, so (with jobs.guard.take-damage) mobs can hurt them. */
     public boolean takesDamage(Employee e) {
-        return (e.job == JobType.GUARD || e.job == JobType.BODYGUARD) && plugin.settings().guardsTakeDamage;
+        return e.job == JobType.BODYGUARD && plugin.settings().guardsTakeDamage;
     }
 
     /** Down for jobs.guard.knockout-seconds instead of dying; back on its feet at full health after. */
@@ -539,6 +644,10 @@ public final class EmployeeManager {
         List<ItemStack> items = new ArrayList<>();
         for (ItemStack s : e.backpack.getContents()) if (s != null && !s.getType().isAir()) items.add(s);
         e.backpack.clear();
+        for (int i = 0; i < e.armor.length; i++) {
+            if (e.armor[i] != null && !e.armor[i].getType().isAir()) items.add(e.armor[i]);
+            e.armor[i] = null;
+        }
         if (receiver != null) {
             for (ItemStack s : Items.add(receiver.getInventory(), items)) receiver.getWorld().dropItem(receiver.getLocation(), s);
         } else if (e.location.getWorld() != null) {
@@ -551,6 +660,7 @@ public final class EmployeeManager {
         despawn(e);
         if (plugin.villagerHiring() != null) plugin.villagerHiring().released(e);   // a hired villager goes back to being one
         employees.remove(e.id);
+        spawnRetryAt.remove(e.id);
         plugin.ledger().forget(e.id);
         refreshTickets();
         save();
@@ -591,7 +701,7 @@ public final class EmployeeManager {
      * employee that is far from it (more than a long walk) is moved there.
      */
     /** Jobs that work out in the open: a home under a roof only traps them. */
-    private static final java.util.Set<JobType> OUTDOOR = java.util.EnumSet.of(JobType.GUARD, JobType.BODYGUARD,
+    private static final java.util.Set<JobType> OUTDOOR = java.util.EnumSet.of(JobType.BODYGUARD,
             JobType.LUMBERJACK, JobType.FARMER, JobType.RANCHER);
 
     /** Moves an outdoor worker's home out from under a roof onto open ground nearby. */
@@ -708,9 +818,11 @@ public final class EmployeeManager {
 
     /** Holds plugin chunk tickets on every work site so employees (and their crops and trees) keep going. */
     public void refreshTickets() {
+        empty = Bukkit.getOnlinePlayers().isEmpty();   // fresh, so a join/quit releases or reclaims tickets right away
         Map<String, Set<Long>> want = new HashMap<>();
         if (plugin.settings().keepLoaded) {
             for (Employee e : employees.values()) {
+                if (resting(e)) continue;   // nobody's on to see it rest, and it isn't working: no reason to keep its chunks loaded
                 if (e.area != null) {
                     WorkArea a = e.area.expand(8, 0);
                     for (int cx = a.minX() >> 4; cx <= a.maxX() >> 4; cx++) {

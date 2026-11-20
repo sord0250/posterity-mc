@@ -77,7 +77,7 @@ public final class EmployeeMenu extends Menu {
                 pl -> { run(pl, "away " + ref(pl, e) + " " + (away ? "rest" : "work")); open(pl); }));
 
         int zoneCount = e.zones.size() + e.zonePresets.size();
-        boolean guard = e.job == JobType.GUARD || e.job == JobType.BODYGUARD;
+        boolean guard = e.job == JobType.BODYGUARD;
         b.add(Dialogs.button("<aqua>" + (guard ? "No-fight" : "No-work") + " zones: " + zoneCount,
                 guard ? "<gray>Places where " + e.name + " leaves mobs alone (a golem farm's zombie)."
                         : "<gray>Places " + e.name + " leaves alone (no mining, building, harvesting).",

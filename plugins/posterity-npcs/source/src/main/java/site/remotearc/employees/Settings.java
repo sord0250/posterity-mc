@@ -130,6 +130,8 @@ public final class Settings {
     public final double buildFallbackPrice;
     public final boolean downloadsEnabled;
     public final long downloadMaxBytes;
+    /** BlueMap is public with no sign-in, so each of its three layers can be turned off if that's too much to share. */
+    public final boolean blueMapShowEmployees, blueMapShowPlans, blueMapShowTrades;
     /** The web page uploads go through, ending in /; empty turns uploads off. */
     public final String uploadUrl;
 
@@ -142,6 +144,8 @@ public final class Settings {
     public final boolean villagerReleaseOnFire;
     /** Villagers that come to a player's first kingdom (with Kingdoms &amp; Claims), free to hire; 0 = none. */
     public final int kingdomSettlers;
+    /** Days an unhired settler stays invulnerable before it's just a villager again (0 = forever). */
+    public final int settlerExpireDays;
     /** A hired villager's village gets a baby villager to replace it, after a delay, up to its old population. */
     public final boolean replenishEnabled;
     public final long replenishDelayMillis;
@@ -256,11 +260,11 @@ public final class Settings {
         if (animals.isEmpty()) animals.addAll(EnumSet.of(EntityType.COW, EntityType.PIG, EntityType.SHEEP, EntityType.CHICKEN));
         ranchAnimals = animals;
         Set<EntityType> ignore = EnumSet.noneOf(EntityType.class);
-        for (String a : c.getStringList("jobs.guard.ignore")) {
+        for (String a : c.getStringList("jobs.bodyguard.ignore")) {
             try {
                 ignore.add(EntityType.valueOf(a.trim().toUpperCase(Locale.ROOT)));
             } catch (IllegalArgumentException ex) {
-                log.warning("jobs.guard.ignore: unknown mob " + a);
+                log.warning("jobs.bodyguard.ignore: unknown mob " + a);
             }
         }
         guardIgnore = ignore;
@@ -321,6 +325,9 @@ public final class Settings {
                 else buildPrices.put(m, bp.getDouble(k));
             }
         }
+        blueMapShowEmployees = c.getBoolean("web.bluemap.show-employees", true);
+        blueMapShowPlans = c.getBoolean("web.bluemap.show-plans", true);
+        blueMapShowTrades = c.getBoolean("web.bluemap.show-trades", true);
         downloadsEnabled = c.getBoolean("blueprints.downloads-enabled", true);
         downloadMaxBytes = (long) (Math.max(1, c.getDouble("blueprints.max-download-mb", 50)) * 1024 * 1024);
         String up = c.getString("blueprints.upload-url", "").trim();
@@ -329,6 +336,7 @@ public final class Settings {
         villagerNaturalOnly = c.getBoolean("villager-hiring.natural-only", true);
         villagerReleaseOnFire = c.getBoolean("villager-hiring.release-on-fire", true);
         kingdomSettlers = clamp(c.getInt("villager-hiring.kingdom-settlers", 2), 0, 6);
+        settlerExpireDays = Math.max(0, c.getInt("villager-hiring.settler-expire-days", 7));
         replenishEnabled = c.getBoolean("villager-hiring.replenish.enabled", true);
         replenishDelayMillis = (long) (Math.max(0, c.getDouble("villager-hiring.replenish.delay-minutes", 20)) * 60_000L);
         replenishRadius = clamp(c.getInt("villager-hiring.replenish.radius", 48), 8, 128);
@@ -343,8 +351,7 @@ public final class Settings {
             case BUILDER -> new int[]{8, 3, 5, maxAreaSize, 64};
             case SMELTER -> new int[]{4, 2, 4, 32, 16};
             case RANCHER -> new int[]{8, 3, 5, 48, 32};
-            case GUARD -> new int[]{16, 8, 8, 96, 64};
-            case BODYGUARD -> new int[]{6, 4, 4, 64, 32};
+            case BODYGUARD -> new int[]{16, 8, 8, 96, 64};
             case TRADER -> new int[]{8, 3, 6, 64, 32};
             case COURIER -> new int[]{3, 3, 5, 32, 16};
         };
@@ -356,7 +363,7 @@ public final class Settings {
             case FARMER -> 32;
             case QUARRY -> 64;
             case RANCHER -> 64;
-            case GUARD, BODYGUARD -> 64;
+            case BODYGUARD -> 64;
             case TRADER -> 256;
             case SMELTER -> 640;
             default -> 0;

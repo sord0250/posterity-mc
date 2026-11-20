@@ -20,6 +20,8 @@ import java.util.concurrent.ConcurrentHashMap;
 final class WebAuth {
 
     static final long CODE_MS = 10 * 60_000L, SESSION_MS = 30L * 24 * 3600_000L;
+    /** However many times one player signs in, only their most recent sessions stay valid. */
+    private static final int MAX_SESSIONS_PER_PLAYER = 5;
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private record Code(UUID player, long until, String to) {}
@@ -73,16 +75,28 @@ final class WebAuth {
         if (c == null || c.until() < System.currentTimeMillis()) return null;
         String token = random(32);
         sessions.put(hash(token), new Session(c.player(), System.currentTimeMillis() + SESSION_MS));
+        dropOldest(c.player());
         save();
         return new String[]{token, c.to()};
     }
 
-    /** Who the session token belongs to, or null. */
+    /** However many browsers one player signs in from, keeps only the newest {@link #MAX_SESSIONS_PER_PLAYER}: old ones can't just pile up forever. */
+    private void dropOldest(UUID player) {
+        var theirs = sessions.entrySet().stream().filter(en -> en.getValue().player().equals(player))
+                .sorted(Map.Entry.comparingByValue(java.util.Comparator.comparingLong(Session::until))).toList();
+        for (int i = 0; i < theirs.size() - MAX_SESSIONS_PER_PLAYER; i++) sessions.remove(theirs.get(i).getKey());
+    }
+
+    /** Who the session token belongs to, or null (also null once they're banned: the map isn't a way around that). */
     UUID who(String token) {
         if (token == null || token.isEmpty()) return null;
         Session s = sessions.get(hash(token));
         if (s == null) return null;
         if (s.until() < System.currentTimeMillis()) {
+            sessions.remove(hash(token));
+            return null;
+        }
+        if (org.bukkit.Bukkit.getOfflinePlayer(s.player()).isBanned()) {
             sessions.remove(hash(token));
             return null;
         }

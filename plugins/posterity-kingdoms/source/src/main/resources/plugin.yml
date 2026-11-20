@@ -3,16 +3,17 @@ version: '${project.version}'
 main: site.remotearc.kingdom.PosterityKingdoms
 api-version: '26.2'
 authors: [Posterity]
-description: Claim a single spot as your kingdom's Core, so NPCs can be told apart by whose kingdom they belong to.
+description: Place a Kingdom Core (bedrock) to found your kingdom, so NPCs can be told apart by whose kingdom they belong to.
 softdepend: [Vault, ArcEmployees]
 commands:
   kingdom:
-    description: Claim a kingdom Core and run it.
-    usage: /kingdom [help|claim|info|addruler|removeruler|leave|flag|money|delete]
+    description: Found a kingdom (place its Core) and run it.
+    usage: /kingdom [help|core|info|addruler|removeruler|leave|flag|money|delete|reload]
     aliases: [kd, kingdoms]
+    permission: posteritykingdoms.use
 permissions:
   posteritykingdoms.use:
-    description: Claim a kingdom, manage its rulers, leave one.
+    description: Found a kingdom, manage its rulers, leave one.
     default: true
   posteritykingdoms.admin:
     description: Disband any kingdom, give yourself money, reload.

@@ -138,14 +138,6 @@ public final class HomeSites {
         World w = Bukkit.getWorld(o.world);
         if (w == null) return;
         WorkArea b = o.bounds();
-        for (int x = b.minX(); x <= b.maxX(); x++) {
-            for (int z = b.minZ(); z <= b.maxZ(); z++) {
-                if (!plugin.estate().mayWork(e.owner, w, x, b.minY(), z)) {
-                    Msg.error(p, "Part of that spot is on someone else's land. Move it with [Move here].");
-                    return;
-                }
-            }
-        }
         for (Employee o2 : plugin.manager().all()) {
             if (o2 == e || o2.homeSite == null || !o2.homeSite.world.equals(o.world)) continue;
             WorkArea theirs = o2.siteArea != null ? o2.siteArea : o2.homeSite.plan != null ? o2.homeSite.bounds() : null;

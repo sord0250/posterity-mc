@@ -59,6 +59,8 @@ public final class Uploads {
     private final Map<String, Ticket> tickets = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, JsonArray> results = new java.util.concurrent.ConcurrentHashMap<>();
     private final Map<String, java.util.concurrent.atomic.AtomicInteger> received = new java.util.concurrent.ConcurrentHashMap<>();
+    /** Tokens with a file transfer in progress right now: one at a time per link, so a slow upload can't tie up the web server's whole thread pool by itself. */
+    private final Set<String> uploading = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final Set<String> busy = java.util.concurrent.ConcurrentHashMap.newKeySet();
     private final SecureRandom random = new SecureRandom();
     private final Gson gson = new Gson();
@@ -165,36 +167,47 @@ public final class Uploads {
             name = name.substring(0, 100 - (name.length() - dot)) + name.substring(dot);
         }
         var n = received.get(token);
-        if (n == null || n.incrementAndGet() > MAX_FILES) return new Received("That's the most files one link takes (" + MAX_FILES + "). Get a new link in the game.", null);
-        long max = plugin.settings().downloadMaxBytes;
-        File in = new File(t.dir, "in");
-        File part = new File(in, "." + name + "." + System.nanoTime() + ".part");
-        long size;
-        try (var out = Files.newOutputStream(part.toPath())) {
-            byte[] buf = new byte[64 * 1024];
-            size = 0;
-            int r;
-            while ((r = body.read(buf)) > 0) {
-                size += r;
-                if (size > max) break;
-                out.write(buf, 0, r);
+        if (n == null || n.get() >= MAX_FILES) return new Received("That's the most files one link takes (" + MAX_FILES + "). Get a new link in the game.", null);
+        if (!uploading.add(token)) return new Received("Already receiving a file from this link; wait for it to finish first.", null);
+        try {
+            long max = plugin.settings().downloadMaxBytes;
+            File in = new File(t.dir, "in");
+            File part = new File(in, "." + name + "." + System.nanoTime() + ".part");
+            long size;
+            long deadline = System.currentTimeMillis() + 60_000L;
+            try (var out = Files.newOutputStream(part.toPath())) {
+                byte[] buf = new byte[64 * 1024];
+                size = 0;
+                int r;
+                while ((r = body.read(buf)) > 0) {
+                    size += r;
+                    if (size > max) break;
+                    if (System.currentTimeMillis() > deadline) {
+                        Files.deleteIfExists(part.toPath());
+                        return new Received("That took too long (over a minute); try again on a faster connection.", null);
+                    }
+                    out.write(buf, 0, r);
+                }
             }
+            if (size > max) {
+                Files.deleteIfExists(part.toPath());
+                return new Received("Too big: files can be up to " + (max / (1024 * 1024)) + " MB.", null);
+            }
+            if (size == 0) {
+                Files.deleteIfExists(part.toPath());
+                return new Received("The file was empty.", null);
+            }
+            File target;
+            synchronized (t) {   // two files with the same name at once get different names, not one over the other
+                target = new File(in, name);
+                for (int i = 2; target.exists(); i++) target = new File(in, i + "-" + name);
+                Files.move(part.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE);
+            }
+            n.incrementAndGet();   // only a file that actually made it counts toward the limit
+            return new Received(null, target.getName());
+        } finally {
+            uploading.remove(token);
         }
-        if (size > max) {
-            Files.deleteIfExists(part.toPath());
-            return new Received("Too big: files can be up to " + (max / (1024 * 1024)) + " MB.", null);
-        }
-        if (size == 0) {
-            Files.deleteIfExists(part.toPath());
-            return new Received("The file was empty.", null);
-        }
-        File target;
-        synchronized (t) {   // two files with the same name at once get different names, not one over the other
-            target = new File(in, name);
-            for (int i = 2; target.exists(); i++) target = new File(in, i + "-" + name);
-            Files.move(part.toPath(), target.toPath(), StandardCopyOption.ATOMIC_MOVE);
-        }
-        return new Received(null, target.getName());
     }
 
     private void poll() {

@@ -41,7 +41,7 @@ import java.util.UUID;
 final class JobCommands {
 
     static final List<String> BUILD_ACTIONS = List.of("rename", "around", "follow", "plan", "start", "preview", "rotate", "flip", "move", "shift", "materials",
-            "clear", "cancel", "info", "swap", "swaps", "pick", "ground", "buy", "skip", "dismantle", "menu");
+            "clear", "break", "label", "cancel", "info", "swap", "swaps", "pick", "ground", "buy", "skip", "dismantle", "menu");
 
     private final ArcEmployees plugin;
 
@@ -154,6 +154,11 @@ final class JobCommands {
                     Block b = p.getTargetBlockExact(6);
                     if (b == null || !(b.getState(false) instanceof Container)) {
                         Msg.error(p, "Look at a chest, barrel or other container within 6 blocks.");
+                        return;
+                    }
+                    if (add && !p.hasPermission("employees.admin") && !mgr().mayUseChest(p.getUniqueId(),
+                            b.getWorld().getName(), b.getX(), b.getY(), b.getZ())) {
+                        Msg.error(p, "Someone else's employees already use that chest.");
                         return;
                     }
                     t = StorageTarget.chest(b);
@@ -275,7 +280,7 @@ final class JobCommands {
     // ── courier routes ────────────────────────────────────────────────────
 
     /** A route end from a word: 12 (a /chest number), look (the container you look at), or x,y,z. */
-    private static StorageTarget parseEnd(CommandSender s, String word) {
+    private StorageTarget parseEnd(CommandSender s, String word) {
         String w = word.toLowerCase(Locale.ROOT).replace("/chest", "").replace("vc", "");
         if (w.equals("look") || w.equals("chest") || w.equals("here")) {
             if (!(s instanceof Player p)) return null;
@@ -297,6 +302,10 @@ final class JobCommands {
             BlockPos pos = BlockPos.parse(word);
             org.bukkit.World wd = org.bukkit.Bukkit.getWorld(world);
             if (wd == null || !(pos.block(wd).getState(false) instanceof Container)) return null;
+            // raw coordinates could point at anyone's chest; only let the owner, their
+            // trusted managers, or an admin route to one nobody's already claimed.
+            if (s instanceof Player p && !p.hasPermission("employees.admin")
+                    && !mgr().mayUseChest(p.getUniqueId(), world, pos.x(), pos.y(), pos.z())) return null;
             return new StorageTarget(StorageTarget.Kind.CHEST, 0, world, pos);
         } catch (RuntimeException ex) {
             return null;
@@ -599,7 +608,7 @@ final class JobCommands {
     void zone(CommandSender s, Employee e, String label, String[] args) {
         String mode = args.length > 2 ? args[2].toLowerCase(Locale.ROOT) : "list";
         var zp = plugin.zonePresets();
-        String what = e.job == JobType.GUARD || e.job == JobType.BODYGUARD ? "leaves mobs alone" : "won't work";
+        String what = e.job == JobType.BODYGUARD ? "leaves mobs alone" : "won't work";
         switch (mode) {
             case "add" -> {
                 if (args.length > 3) {
@@ -677,7 +686,7 @@ final class JobCommands {
                 for (String l : lines) s.sendMessage(Msg.parse("<gray> - " + l));
                 s.sendMessage(Msg.parse("<dark_gray>/" + label + " zone " + e.name + " add [preset] (no preset: your WorldEdit selection)"
                         + " | remove \\<preset or number> | show | clear. Presets: /" + label + " presets."
-                        + (e.job == JobType.GUARD || e.job == JobType.BODYGUARD ? " Guards also ignore name-tagged, leashed and boat/minecart mobs." : "")));
+                        + (e.job == JobType.BODYGUARD ? " Guards also ignore name-tagged, leashed and boat/minecart mobs." : "")));
             }
         }
     }
@@ -1057,7 +1066,7 @@ final class JobCommands {
             plugin.blueprints().download(s, args[2], name);
             return;
         }
-        List<String> names = plugin.blueprints().list();
+        List<String> names = plugin.blueprints().list(s.hasPermission("employees.admin"));
         if (names.isEmpty()) {
             Msg.send(s, "<gray>No blueprints yet. Upload one from your computer with <white>/" + label + " blueprints upload</white>, download one with <white>/" + label + " blueprints download \\<link></white>, "
                     + "or put .schem / .schematic / .litematic / .nbt files in <white>plugins/ArcEmployees/blueprints</white>.");
@@ -1464,14 +1473,18 @@ final class JobCommands {
                         Msg.error(s, "Usage: " + c + " shift forward|back|left|right|up|down [blocks]   (or x y z)");
                         return;
                     }
+                    int dx, dy, dz;
                     try {
-                        o.x += Integer.parseInt(args[3]);
-                        o.y += Integer.parseInt(args[4]);
-                        o.z += Integer.parseInt(args[5]);
+                        dx = Integer.parseInt(args[3]);
+                        dy = Integer.parseInt(args[4]);
+                        dz = Integer.parseInt(args[5]);
                     } catch (NumberFormatException ex) {
                         Msg.error(s, "Usage: " + c + " shift \\<x> \\<y> \\<z>");
                         return;
                     }
+                    o.x += dx;
+                    o.y += dy;
+                    o.z += dz;
                 }
                 o.turnedChanged();
                 // A new placement: nothing happens until it is started again.
@@ -1505,6 +1518,34 @@ final class JobCommands {
                 e.worker.interrupt();
                 Msg.send(s, on ? "<green>" + e.name + " clears whatever is in the way where the blueprint has air (grass, dirt, trees)."
                         : "<green>" + e.name + " only places blocks and leaves the rest of the site as it is.");
+            }
+            case "break" -> {
+                boolean on = args.length < 4 || !args[3].equalsIgnoreCase("off");
+                o.breakBlocks = on;
+                mgr().markDirty();
+                e.worker.interrupt();
+                Msg.send(s, on ? "<green>" + e.name + " breaks a block that's in the way of one the blueprint wants there."
+                        : "<green>" + e.name + " leaves a block that's in the way standing, and skips that spot.");
+            }
+            case "label" -> {
+                if (args.length < 4) {
+                    if (o.hangoutLabel == null) Msg.send(s, "<gray>" + e.name + "'s build isn't labeled as a hangout spot.");
+                    else {
+                        o.hangoutLabel = null;
+                        mgr().markDirty();
+                        Msg.send(s, "<gray>No longer a hangout spot.");
+                    }
+                    return;
+                }
+                String text = String.join(" ", java.util.Arrays.copyOfRange(args, 3, args.length));
+                if (text.length() > 40) {
+                    Msg.error(s, "Keep it to 40 characters or fewer.");
+                    return;
+                }
+                o.hangoutLabel = text;
+                mgr().markDirty();
+                Msg.send(s, "<green>" + e.name + "'s build is now a hangout spot: <white>" + Describe.esc(text)
+                        + "</white>. <gray>Off-duty employees of yours (or your trusted network) may wander there once it's finished.");
             }
             case "materials" -> {
                 if (p != null && (args.length < 4 || !args[3].equalsIgnoreCase("chat"))) {
@@ -1644,19 +1685,20 @@ final class JobCommands {
             return;
         }
         // NPC homes (homes/...) are built through /employees house, not by name: that also keeps players' private houses private.
-        if (name.contains("/") || plugin.blueprints().resolve(name) == null) {
+        boolean admin = p.hasPermission("employees.admin");
+        if (name.contains("/") || plugin.blueprints().resolve(name, admin) == null) {
             Msg.error(p, "There's no blueprint called <white><name></white>. See <white>/employees blueprints</white>.", Msg.p("name", name));
             return;
         }
         Location at = p.getLocation();
         Msg.send(p, "<gray>Reading <white><name></white>...", Msg.p("name", name));
-        plugin.blueprints().load(name).whenComplete((bp, err) -> {
+        plugin.blueprints().load(name, admin).whenComplete((bp, err) -> {
             if (!mgr().all().contains(e)) return;
             if (err != null) {
                 Msg.error(p, "Can't use that blueprint: <reason>", Msg.p("reason", Blueprints.reason(err)));
                 return;
             }
-            String fileName = plugin.blueprints().resolve(name).getName();
+            String fileName = plugin.blueprints().resolve(name, admin).getName();
             BuildOrder o = new BuildOrder(fileName, at.getWorld().getName(), at.getBlockX(), at.getBlockY(), at.getBlockZ());
             o.setPlan(bp);
             // A blueprint saved standing on a slab of dirt and grass: leave that out and sink it so its ground is yours.
@@ -1759,11 +1801,13 @@ final class JobCommands {
         s.sendMessage(Msg.parse("<gray>  Size " + b.width() + "x" + o.plan.sy + "x" + b.length() + ", " + o.describeTurn()
                 + ", corner at " + b.minX() + " " + b.minY() + " " + b.minZ() + (o.world.equals("world") ? "" : " in " + Describe.esc(o.world))));
         String state = o.finished ? "finished" : !o.started ? "not started" : e.paused ? "paused" : "layer " + (o.layer + 1) + " of " + o.plan.sy;
-        s.sendMessage(Msg.parse("<gray>  Progress: <white>" + state + "</white>. Clears the site: <white>" + (o.clearAir ? "yes" : "no")));
+        s.sendMessage(Msg.parse("<gray>  Progress: <white>" + state + "</white>. Clears the site: <white>" + (o.clearAir ? "yes" : "no")
+                + "</white>. Breaks blocks in the way: <white>" + (o.breakBlocks ? "yes" : "no")));
         s.sendMessage(Msg.parse("<gray>  Status: <white>" + Describe.esc(e.status)));
         if (!o.swaps.isEmpty()) s.sendMessage(Msg.parse("<gray>  Swaps: <white>" + o.swaps.size() + "</white> <click:run_command:'" + c + " swaps'>[list]</click>"));
         if (o.groundLayers() > 0) s.sendMessage(Msg.parse("<gray>  Ground under it (" + o.groundLayers() + " layers): <white>" + (o.keepGround ? "built" : "left out")));
-        s.sendMessage(Msg.parse("<dark_gray>  " + c + " start | preview | rotate | flip | move | shift | materials | swap | pick | buy | ground keep|skip | clear on|off | cancel"));
+        if (o.hangoutLabel != null) s.sendMessage(Msg.parse("<gray>  Hangout spot: <white>" + Describe.esc(o.hangoutLabel)));
+        s.sendMessage(Msg.parse("<dark_gray>  " + c + " start | preview | rotate | flip | move | shift | materials | swap | pick | buy | ground keep|skip | clear on|off | break on|off | label \\<text> | cancel"));
     }
 
     private void materials(CommandSender s, Employee e, BuildOrder o, String c) {
@@ -2131,7 +2175,7 @@ final class JobCommands {
                 case "herd" -> out.addAll(List.of("6", "10", "16", "24"));
                 case "build" -> {
                     out.addAll(BUILD_ACTIONS);
-                    for (String n : plugin.blueprints().list()) {
+                    for (String n : plugin.blueprints().list(s.hasPermission("employees.admin"))) {
                         int dot = n.lastIndexOf('.');
                         out.add(dot > 0 ? n.substring(0, dot) : n);
                     }
@@ -2150,7 +2194,7 @@ final class JobCommands {
                 if (mode.equals("team")) out.addAll(List.of("on", "off"));
             } else if (sub.equals("build") && args.length == 4) {
                 if (mode.equals("rotate")) out.addAll(List.of("90", "180", "270", "-90"));
-                if (mode.equals("clear")) out.addAll(List.of("on", "off"));
+                if (mode.equals("clear") || mode.equals("break")) out.addAll(List.of("on", "off"));
                 if (mode.equals("shift")) out.addAll(List.of("forward", "back", "left", "right", "up", "down"));
                 if (mode.equals("ground")) out.addAll(List.of("keep", "skip"));
                 if (mode.equals("buy")) out.addAll(List.of("confirm", "undo"));

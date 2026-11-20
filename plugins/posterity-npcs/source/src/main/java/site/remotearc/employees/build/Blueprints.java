@@ -70,7 +70,21 @@ public final class Blueprints {
     public static final String HOMES = "homes/", PLAYERS = "homes/players/", SITES = "homes/sites/";
 
     private List<File> dirs() {
+        return dirs(true);
+    }
+
+    /**
+     * {@code includeExternal} = false leaves out WorldEdit's schematics and
+     * ArcShop's drafting studio: other plugins' own folders, which players
+     * fill for their own purposes and never meant to share with the whole
+     * server through this one. Used for a player freely picking a blueprint
+     * to build (the menu, {@code /employees build <name>}); every other,
+     * already-trusted lookup (an in-progress build's own file, name-collision
+     * checks while generating one) keeps seeing all of them.
+     */
+    private List<File> dirs(boolean includeExternal) {
         List<File> out = new ArrayList<>(List.of(dir));
+        if (!includeExternal) return out;
         File we = new File(plugin.getDataFolder().getParentFile(), "WorldEdit/schematics");
         if (we.isDirectory()) out.add(we);
         // Builds saved in ArcShop's drafting studio (/studio save).
@@ -81,8 +95,13 @@ public final class Blueprints {
 
     /** Every blueprint file name, sorted; ArcEmployees' own folder wins over WorldEdit's on a clash. */
     public List<String> list() {
+        return list(true);
+    }
+
+    /** See {@link #dirs(boolean)}: false for a player freely picking one to build. */
+    public List<String> list(boolean includeExternal) {
         Map<String, String> names = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-        for (File d : dirs()) {
+        for (File d : dirs(includeExternal)) {
             File[] files = d.listFiles();
             if (files == null) continue;
             for (File f : files) {
@@ -98,6 +117,11 @@ public final class Blueprints {
      * {@link #SITES}) is looked for in that folder only.
      */
     public File resolve(String name) {
+        return resolve(name, true);
+    }
+
+    /** See {@link #dirs(boolean)}: false for a player freely picking one to build. */
+    public File resolve(String name, boolean includeExternal) {
         if (name == null || name.contains("\\") || name.contains("..") || name.startsWith(".")) return null;
         List<File> where = null;
         for (String ns : List.of(SITES, PLAYERS, HOMES)) {
@@ -108,7 +132,7 @@ public final class Blueprints {
             }
         }
         if (name.isEmpty() || name.contains("/") || name.startsWith(".")) return null;
-        for (File d : where != null ? where : dirs()) {
+        for (File d : where != null ? where : dirs(includeExternal)) {
             File[] files = d.listFiles();
             if (files == null) continue;
             for (File f : files) {
@@ -124,7 +148,12 @@ public final class Blueprints {
 
     /** Loads (or returns the cached copy of) a blueprint. Completes on the main thread. */
     public CompletableFuture<Blueprint> load(String name) {
-        File f = resolve(name);
+        return load(name, true);
+    }
+
+    /** See {@link #dirs(boolean)}: false for a player freely picking one to build. */
+    public CompletableFuture<Blueprint> load(String name, boolean includeExternal) {
+        File f = resolve(name, includeExternal);
         if (f == null) return CompletableFuture.failedFuture(new IOException("there is no blueprint called " + name));
         String key = f.getAbsolutePath() + "|" + f.lastModified() + "|" + f.length();
         Blueprint cached = cache.get(key);
@@ -219,7 +248,7 @@ public final class Blueprints {
             File tmp = null;
             try {
                 HttpClient client = HttpClient.newBuilder()
-                        .followRedirects(HttpClient.Redirect.NORMAL)
+                        .followRedirects(HttpClient.Redirect.NEVER)   // get() follows redirects itself, checking each hop isn't a private address
                         .connectTimeout(Duration.ofSeconds(15)).build();
                 URI at = direct;
                 HttpResponse<InputStream> resp = null;
@@ -277,20 +306,47 @@ public final class Blueprints {
 
     /** GETs a link; anything but 200 is an error, explained where we can. */
     private HttpResponse<InputStream> get(HttpClient client, URI uri) throws IOException, InterruptedException {
-        HttpRequest req = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(60))
-                .header("User-Agent", "Mozilla/5.0 (compatible; ArcEmployees/" + plugin.getPluginMeta().getVersion() + "; Minecraft server plugin)")
-                .GET().build();
-        HttpResponse<InputStream> resp = client.send(req, HttpResponse.BodyHandlers.ofInputStream());
-        int code = resp.statusCode();
-        if (code == 200) return resp;
-        resp.body().close();
-        boolean cloudflare = resp.headers().firstValue("cf-mitigated").isPresent()
-                || resp.headers().firstValue("Server").orElse("").toLowerCase(Locale.ROOT).contains("cloudflare");
-        if ((code == 403 || code == 503) && cloudflare) {
-            throw new IOException(uri.getHost() + " blocks downloads from servers (it only lets browsers in), so " + uploadHint());
+        for (int redirect = 0; ; redirect++) {
+            requireNotPrivate(uri);
+            HttpRequest req = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(60))
+                    .header("User-Agent", "Mozilla/5.0 (compatible; ArcEmployees/" + plugin.getPluginMeta().getVersion() + "; Minecraft server plugin)")
+                    .GET().build();
+            HttpResponse<InputStream> resp = client.send(req, HttpResponse.BodyHandlers.ofInputStream());
+            int code = resp.statusCode();
+            if (code == 200) return resp;
+            if (code >= 300 && code < 400) {
+                String loc = resp.headers().firstValue("Location").orElse(null);
+                resp.body().close();
+                if (loc == null || redirect >= 5) throw new IOException("too many redirects");
+                uri = resp.uri().resolve(loc);
+                continue;
+            }
+            resp.body().close();
+            boolean cloudflare = resp.headers().firstValue("cf-mitigated").isPresent()
+                    || resp.headers().firstValue("Server").orElse("").toLowerCase(Locale.ROOT).contains("cloudflare");
+            if ((code == 403 || code == 503) && cloudflare) {
+                throw new IOException(uri.getHost() + " blocks downloads from servers (it only lets browsers in), so " + uploadHint());
+            }
+            throw new IOException("the site answered " + code
+                    + (code == 403 || code == 401 ? " (it may need you to be logged in), so " + uploadHint() : ""));
         }
-        throw new IOException("the site answered " + code
-                + (code == 403 || code == 401 ? " (it may need you to be logged in), so " + uploadHint() : ""));
+    }
+
+    /** Refuses a loopback, private or link-local address, every hop (the initial link and every redirect): never fetches the server's own network. */
+    private static void requireNotPrivate(URI uri) throws IOException {
+        String host = uri.getHost();
+        if (host == null) throw new IOException("that link has no host");
+        java.net.InetAddress[] addrs;
+        try {
+            addrs = java.net.InetAddress.getAllByName(host);
+        } catch (java.net.UnknownHostException ex) {
+            throw new IOException("couldn't resolve " + host);
+        }
+        for (java.net.InetAddress a : addrs) {
+            if (a.isLoopbackAddress() || a.isAnyLocalAddress() || a.isLinkLocalAddress() || a.isSiteLocalAddress() || a.isMulticastAddress()) {
+                throw new IOException(host + " resolves to a private or local address, which can't be downloaded from");
+            }
+        }
     }
 
     private static final Pattern DRIVE = Pattern.compile("/file/d/([A-Za-z0-9_-]{10,})");

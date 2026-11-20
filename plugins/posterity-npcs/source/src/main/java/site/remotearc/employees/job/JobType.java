@@ -21,10 +21,9 @@ public enum JobType {
             "Keeps the furnaces, smokers and blast furnaces in the work area loaded and fuelled, and collects the results."),
     RANCHER("Rancher", Material.IRON_SWORD, Material.LEAD, List.of("breeder", "herder"),
             "Breeds the animals in the work area up to a herd size, culls extras, shears sheep and collects eggs."),
-    GUARD("Guard", Material.IRON_SWORD, Material.SHIELD, List.of("knight", "defender", "security"),
-            "Patrols the work area and fights hostile mobs that come near; with torches it lights up dark spots."),
-    BODYGUARD("Bodyguard", Material.IRON_SWORD, Material.IRON_CHESTPLATE, List.of("escort", "companion", "follower"),
-            "Follows you and fights mobs that come near you, picks up their drops and lights dark spots; or guards its post when told to stay."),
+    BODYGUARD("Guard", Material.IRON_SWORD, Material.SHIELD, List.of("guard", "knight", "defender", "security", "bodyguard", "escort", "companion", "follower"),
+            "Patrols its post and fights hostile mobs that come near, picks up their drops, and (with torches) lights up dark spots;"
+                    + " told to follow you instead, it goes where you go and guards you the same way."),
     TRADER("Villager Trader", Material.EMERALD, Material.EMERALD, List.of("trader", "villager", "villagertrader", "villager_trader"),
             "Works your trading hall: makes the trades you pick (e.g. 32 sticks for an emerald) whenever the villager has stock."),
     COURIER("Courier", Material.BUNDLE, Material.CHEST_MINECART, List.of("hauler", "carrier", "porter", "delivery"),

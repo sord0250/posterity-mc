@@ -61,10 +61,12 @@ public final class Sorter {
             return inv != null ? inv.getStorageContents().length : plugin.vchests().size();
         }
 
+        /** A snapshot: each slot is its own clone, so nothing that later mutates the working copy touches this one. */
         ItemStack[] read() {
-            if (inv != null) return inv.getStorageContents().clone();
-            ItemStack[] c = plugin.vchests().contents(owner, vc);
-            return Arrays.copyOf(c, size());
+            ItemStack[] src = inv != null ? inv.getStorageContents() : Arrays.copyOf(plugin.vchests().contents(owner, vc), size());
+            ItemStack[] out = new ItemStack[src.length];
+            for (int i = 0; i < src.length; i++) out[i] = src[i] == null ? null : src[i].clone();
+            return out;
         }
 
         boolean write(ItemStack[] contents) {
@@ -117,6 +119,11 @@ public final class Sorter {
         this.profiles = profiles;
         this.labels = new ChestLabels(plugin, this);
         labels.start();
+    }
+
+    /** Forgets a player's undo-able deposit (they can't come back for it anyway); called when they quit. */
+    public void forget(UUID player) {
+        undo.remove(player);
     }
 
     public SortProfiles profiles() {
@@ -185,9 +192,10 @@ public final class Sorter {
         return new ArrayList<>(out.values());
     }
 
-    /** Not someone else's land (ArcEstate), unless an admin. */
+    /** Not already claimed by someone else's employees, unless an admin. */
     private boolean mayOpen(Player p, Block b) {
-        return p.hasPermission("employees.admin") || plugin.estate().mayWork(p.getUniqueId(), b.getWorld(), b.getX(), b.getY(), b.getZ());
+        return p.hasPermission("employees.admin")
+                || plugin.manager().mayUseChest(p.getUniqueId(), b.getWorld().getName(), b.getX(), b.getY(), b.getZ());
     }
 
     public static Location location(String key) {
@@ -468,7 +476,12 @@ public final class Sorter {
         SortProfiles.Profile prof = profiles.get(p.getUniqueId());
         Plan plan = plan(p, boxes);
         Map<Box, ItemStack[]> now = new LinkedHashMap<>();
-        for (Box b : plan.boxes()) now.put(b, Arrays.copyOf(plan.before().get(b), b.size()));
+        for (Box b : plan.boxes()) {
+            ItemStack[] src = plan.before().get(b);
+            ItemStack[] copy = new ItemStack[b.size()];
+            for (int i = 0; i < copy.length && i < src.length; i++) copy[i] = src[i] == null ? null : src[i].clone();
+            now.put(b, copy);
+        }
         Map<Box, String> catOf = new HashMap<>();
         for (Box b : plan.boxes()) {
             String pin = prof.pinnedTo(b.key);

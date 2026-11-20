@@ -29,11 +29,24 @@ final class EmployeeListener implements Listener {
         plugin.manager().worldLoaded(ev.getWorld());
     }
 
+    /** A world unloading while the plugin runs: hold its employees instead of saving (or ticking) a dead world reference. */
+    @EventHandler
+    public void onWorldUnload(org.bukkit.event.world.WorldUnloadEvent ev) {
+        plugin.manager().worldUnloaded(ev.getWorld());
+    }
+
+    /** A chunk unloading: let any employee there wrap up first (see EmployeeManager#chunkUnloading). */
+    @EventHandler
+    public void onChunkUnload(org.bukkit.event.world.ChunkUnloadEvent ev) {
+        plugin.manager().chunkUnloading(ev.getWorld(), ev.getChunk().getX(), ev.getChunk().getZ());
+    }
+
     /** Keeps track of when a player was last on the server. */
     @EventHandler
     public void onJoin(org.bukkit.event.player.PlayerJoinEvent ev) {
         plugin.manager().playerSeen();
         plugin.reports().joined(ev.getPlayer());
+        plugin.manager().refreshTickets();   // the first player on: everyone resting wakes up and needs its chunks back
     }
 
     /** An employee's arrow never hurts a player, a pet, a villager or another employee: only hostile mobs. */
@@ -53,6 +66,10 @@ final class EmployeeListener implements Listener {
     @EventHandler
     public void onQuit(org.bukkit.event.player.PlayerQuitEvent ev) {
         plugin.reports().quit(ev.getPlayer());
+        plugin.sorter().forget(ev.getPlayer().getUniqueId());
+        if (org.bukkit.Bukkit.getOnlinePlayers().size() <= 1) {   // this is the last one leaving
+            org.bukkit.Bukkit.getScheduler().runTask(plugin, () -> plugin.manager().refreshTickets());
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
