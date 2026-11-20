@@ -60,8 +60,6 @@ public final class Employee {
     public String villagerType;
     /** Its one personality trait, rolled at hiring: the owner doesn't pick it. */
     public Personality personality;
-    /** The kingdom it was hired into (PosterityKingdoms), or null if there wasn't one. */
-    public String kingdom;
     /** Its home (bed and door), or null: homeless. */
     public House house;
     /** The catalog house placed for it to live in, while it's built (and after); null if none. */

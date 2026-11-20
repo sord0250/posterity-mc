@@ -672,8 +672,9 @@ final class EmployeesCommand implements TabExecutor {
     }
 
     private void info(CommandSender s, Employee e) {
+        String kingdom = mgr().kingdomOf(e);
         Msg.send(s, "<gold>" + e.name + "</gold> <gray>the " + e.job.display().toLowerCase() + ", employed by " + e.ownerName()
-                + (e.kingdom != null ? " (" + e.kingdom + ")" : ""));
+                + (kingdom != null ? " (" + kingdom + ")" : ""));
         for (String line : Describe.lore(plugin, e)) s.sendMessage(Msg.parse("  " + line));
     }
 

@@ -115,7 +115,6 @@ final class EmployeeStore {
         e.villagerType = s.getString("villager-type");
         e.personality = Personality.parse(s.getString("personality"));
         if (e.personality == null) e.personality = Personality.random(random);   // hired before personalities existed
-        e.kingdom = s.getString("kingdom");
         e.house = House.load(s.getString("house"));
         e.homeSite = BuildOrder.load(s.getConfigurationSection("home-site"));
         if (e.homeSite != null) {
@@ -311,7 +310,6 @@ final class EmployeeStore {
             s.set("hired-at", e.hiredAt);
             if (e.villagerType != null) s.set("villager-type", e.villagerType);
             if (e.personality != null) s.set("personality", e.personality.name());
-            if (e.kingdom != null) s.set("kingdom", e.kingdom);
             if (e.house != null) s.set("house", e.house.save());
             if (e.homeSite != null && e.siteBed != null && e.siteDoor != null) {
                 e.homeSite.save(s.createSection("home-site"));

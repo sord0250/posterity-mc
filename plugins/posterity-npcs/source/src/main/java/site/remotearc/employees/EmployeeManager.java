@@ -399,12 +399,23 @@ public final class EmployeeManager {
         return out;
     }
 
-    /** How many employees (anyone's) are tagged with this kingdom (PosterityKingdoms). */
+    /**
+     * How many employees (anyone's) have this kingdom right now: looked up
+     * live from each employee's owner (PosterityKingdoms), not a tag frozen
+     * at hire time. So disbanding and founding a new kingdom (even under a
+     * different name) never leaves old employees stranded under a kingdom
+     * that no longer exists, or lets a reused name quietly inherit a count.
+     */
     public long countInKingdom(String kingdom) {
         if (kingdom == null) return 0;
         long n = 0;
-        for (Employee e : employees.values()) if (kingdom.equalsIgnoreCase(e.kingdom)) n++;
+        for (Employee e : employees.values()) if (kingdom.equalsIgnoreCase(plugin.kingdomBridge().kingdomOf(e.owner))) n++;
         return n;
+    }
+
+    /** The kingdom this employee's owner currently owns or rules (PosterityKingdoms), or null. */
+    public String kingdomOf(Employee e) {
+        return plugin.kingdomBridge().kingdomOf(e.owner);
     }
 
     // ── chest access (no land claims any more: a chest is "whoever's employee already uses it") ────
@@ -528,13 +539,7 @@ public final class EmployeeManager {
 
     /** Hires an employee standing at {@code at}, working the area around it. Payment must already be taken. */
     public Employee hire(UUID owner, JobType job, String name, Location at) {
-        return hire(owner, job, name, at, plugin.kingdomBridge().kingdomOf(owner));
-    }
-
-    /** Same, tagged with a kingdom (PosterityKingdoms) directly, instead of looking the owner's up. */
-    public Employee hire(UUID owner, JobType job, String name, Location at, String kingdom) {
         Employee e = new Employee(UUID.randomUUID(), owner, job, name);
-        e.kingdom = kingdom;
         if (job == JobType.TRADER) e.craftNever.addAll(plugin.settings().traderNeverCraft);
         e.skin = Skin.random(random);
         e.personality = Personality.random(random);
