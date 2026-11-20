@@ -41,7 +41,7 @@ import java.util.UUID;
 final class JobCommands {
 
     static final List<String> BUILD_ACTIONS = List.of("rename", "around", "follow", "plan", "start", "preview", "rotate", "flip", "move", "shift", "materials",
-            "clear", "break", "label", "cancel", "info", "swap", "swaps", "pick", "ground", "buy", "skip", "dismantle", "menu");
+            "clear", "break", "cancel", "info", "swap", "swaps", "pick", "ground", "buy", "skip", "dismantle", "menu");
 
     private final ArcEmployees plugin;
 
@@ -1527,26 +1527,6 @@ final class JobCommands {
                 Msg.send(s, on ? "<green>" + e.name + " breaks a block that's in the way of one the blueprint wants there."
                         : "<green>" + e.name + " leaves a block that's in the way standing, and skips that spot.");
             }
-            case "label" -> {
-                if (args.length < 4) {
-                    if (o.hangoutLabel == null) Msg.send(s, "<gray>" + e.name + "'s build isn't labeled as a hangout spot.");
-                    else {
-                        o.hangoutLabel = null;
-                        mgr().markDirty();
-                        Msg.send(s, "<gray>No longer a hangout spot.");
-                    }
-                    return;
-                }
-                String text = String.join(" ", java.util.Arrays.copyOfRange(args, 3, args.length));
-                if (text.length() > 40) {
-                    Msg.error(s, "Keep it to 40 characters or fewer.");
-                    return;
-                }
-                o.hangoutLabel = text;
-                mgr().markDirty();
-                Msg.send(s, "<green>" + e.name + "'s build is now a hangout spot: <white>" + Describe.esc(text)
-                        + "</white>. <gray>Off-duty employees of yours (or your trusted network) may wander there once it's finished.");
-            }
             case "materials" -> {
                 if (p != null && (args.length < 4 || !args[3].equalsIgnoreCase("chat"))) {
                     if (ready(s, o)) site.remotearc.employees.gui.MaterialsMenu.open(plugin, p, e);
@@ -1806,8 +1786,7 @@ final class JobCommands {
         s.sendMessage(Msg.parse("<gray>  Status: <white>" + Describe.esc(e.status)));
         if (!o.swaps.isEmpty()) s.sendMessage(Msg.parse("<gray>  Swaps: <white>" + o.swaps.size() + "</white> <click:run_command:'" + c + " swaps'>[list]</click>"));
         if (o.groundLayers() > 0) s.sendMessage(Msg.parse("<gray>  Ground under it (" + o.groundLayers() + " layers): <white>" + (o.keepGround ? "built" : "left out")));
-        if (o.hangoutLabel != null) s.sendMessage(Msg.parse("<gray>  Hangout spot: <white>" + Describe.esc(o.hangoutLabel)));
-        s.sendMessage(Msg.parse("<dark_gray>  " + c + " start | preview | rotate | flip | move | shift | materials | swap | pick | buy | ground keep|skip | clear on|off | break on|off | label \\<text> | cancel"));
+        s.sendMessage(Msg.parse("<dark_gray>  " + c + " start | preview | rotate | flip | move | shift | materials | swap | pick | buy | ground keep|skip | clear on|off | break on|off | cancel"));
     }
 
     private void materials(CommandSender s, Employee e, BuildOrder o, String c) {

@@ -8,7 +8,7 @@ softdepend: [Vault, ArcEmployees]
 commands:
   kingdom:
     description: Found a kingdom (place its Core) and run it.
-    usage: /kingdom [help|core|info|addruler|removeruler|leave|flag|money|delete|reload]
+    usage: /kingdom [help|core|info|addruler|removeruler|leave|flag|hangouts|money|delete|reload]
     aliases: [kd, kingdoms]
     permission: posteritykingdoms.use
 permissions:

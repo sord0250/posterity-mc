@@ -19,7 +19,7 @@ import java.util.UUID;
 /** /kingdom (also /kd, /kingdoms): claiming a kingdom's Core and running it. */
 final class KingdomCommand implements TabExecutor {
 
-    private static final List<String> SUBS = List.of("help", "core", "info", "addruler", "removeruler", "leave", "delete", "flag");
+    private static final List<String> SUBS = List.of("help", "core", "info", "addruler", "removeruler", "leave", "delete", "flag", "hangouts");
     private static final List<String> ADMIN = List.of("money", "reload");
 
     private final PosterityKingdoms plugin;
@@ -70,6 +70,7 @@ final class KingdomCommand implements TabExecutor {
             case "delete" -> delete(p, args, label);
             case "flag" -> flag(p, args);
             case "money" -> money(p, args);
+            case "hangouts", "hangout" -> hangouts(p, args);
             default -> help(p, label);
         }
         return true;
@@ -87,6 +88,7 @@ final class KingdomCommand implements TabExecutor {
         s.sendMessage(Msg.parse(c + " delete [kingdom]</white> <gray>- disband your kingdom (or, for admins, anyone's)"));
         s.sendMessage(Msg.parse(c + " flag set</white> <gray>- make the banner in your hand your kingdom's flag design (owner only)"));
         s.sendMessage(Msg.parse(c + " flag buy</white> <gray>- a copy of your kingdom's flag for " + plugin.settings().flagEmeralds + " emeralds"));
+        s.sendMessage(Msg.parse(c + " hangouts</white> <gray>- name areas where your off-duty NPCs gather (needs Posterity NPCs)"));
         if (admin(s)) {
             s.sendMessage(Msg.parse(c + " money <amount></white> <gray>- give yourself money (economy stub, until merchants exist)"));
             s.sendMessage(Msg.parse(c + " reload</white> <gray>- reload config.yml"));
@@ -113,6 +115,17 @@ final class KingdomCommand implements TabExecutor {
         for (var s : left.values()) p.getWorld().dropItem(p.getLocation(), s);
         Msg.send(p, "<green>Here's " + Msg.esc(name) + "'s Kingdom Core.</green> <gray>Place the bedrock wherever you want your kingdom"
                 + " centered: that spot becomes its Core (and can't be broken afterward).");
+    }
+
+    /** Hands off to ArcEmployees' own /employees hangouts (its data, its menu); nothing to do here without that plugin. */
+    private void hangouts(Player p, String[] args) {
+        if (org.bukkit.Bukkit.getPluginManager().getPlugin("ArcEmployees") == null) {
+            Msg.error(p, "That needs Posterity NPCs (ArcEmployees) installed.");
+            return;
+        }
+        StringBuilder cmd = new StringBuilder("employees hangouts");
+        for (int i = 1; i < args.length; i++) cmd.append(' ').append(args[i]);
+        p.performCommand(cmd.toString());
     }
 
     /**

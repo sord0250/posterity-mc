@@ -77,10 +77,12 @@ import java.util.UUID;
  */
 public final class OutOfBody implements Listener {
 
-    public enum Goal { AREA, STORAGE, PANTRY, ZONE, HANGOUT }
+    public enum Goal { AREA, STORAGE, PANTRY, ZONE, KINGDOM_HANGOUT }
 
     private static final int RANGE = 96;
     private static final double REACH = 160;
+    /** No job settings to size a kingdom hangout spot by, so it gets its own flat cap. */
+    private static final int MAX_HANGOUT_SIZE = 128;
     private static final long TIMEOUT_TICKS = 20L * 60 * 5;
     private static final Particle.DustOptions EDGE = new Particle.DustOptions(Color.fromRGB(80, 255, 120), 1.4f);
     private static final Particle.DustOptions CORNER = new Particle.DustOptions(Color.fromRGB(255, 200, 40), 2.0f);
@@ -122,10 +124,13 @@ public final class OutOfBody implements Listener {
 
     private final class Session {
         final Player p;
+        /** Null only for KINGDOM_HANGOUT: picking a spot isn't about any one employee. */
         final Employee e;
         final Goal goal;
         final Saved saved;
         final Location anchor;
+        /** KINGDOM_HANGOUT only: the name it's given the new spot. */
+        final String hangoutName;
         Mannequin body;
         BukkitTask task;
         BlockPos a, b;
@@ -137,12 +142,13 @@ public final class OutOfBody implements Listener {
         /** Our own teleports, which the teleport guard lets through. */
         boolean moving;
 
-        Session(Player p, Employee e, Goal goal, Saved saved, Location anchor) {
+        Session(Player p, Employee e, Goal goal, Saved saved, Location anchor, String hangoutName) {
             this.p = p;
             this.e = e;
             this.goal = goal;
             this.saved = saved;
             this.anchor = anchor;
+            this.hangoutName = hangoutName;
         }
     }
 
@@ -158,7 +164,16 @@ public final class OutOfBody implements Listener {
             Msg.error(p, "That isn't available right now.");
             return;
         }
-        instance.begin(p, e, goal);
+        instance.begin(p, e, goal, null);
+    }
+
+    /** Leaves the player's body to pick an area for a new, named kingdom hangout spot (no employee involved). */
+    public static void startForHangout(ArcEmployees plugin, Player p, String name) {
+        if (instance == null) {
+            Msg.error(p, "That isn't available right now.");
+            return;
+        }
+        instance.begin(p, null, Goal.KINGDOM_HANGOUT, name);
     }
 
     /** Everyone back in their bodies (plugin stopping). */
@@ -173,17 +188,13 @@ public final class OutOfBody implements Listener {
 
     // ── going out and coming back ─────────────────────────────────────────
 
-    private void begin(Player p, Employee e, Goal goal) {
+    private void begin(Player p, Employee e, Goal goal, String hangoutName) {
         if (sessions.containsKey(p.getUniqueId())) {
             Msg.error(p, "You're already out of your body. Press <white>F</white> to go back.");
             return;
         }
         if (goal == Goal.AREA && e.job == JobType.BUILDER) {
             Msg.error(p, "A builder's area follows its blueprint.");
-            return;
-        }
-        if (goal == Goal.HANGOUT && e.build == null) {
-            Msg.error(p, e.name + " has nothing built yet to pick a hangout spot for.");
             return;
         }
         if (p.getGameMode() == GameMode.SPECTATOR || p.isInsideVehicle() || p.isDead() || p.isSleeping()) {
@@ -195,15 +206,15 @@ public final class OutOfBody implements Listener {
             Msg.error(p, "Not in the middle of a fight. Try again in a few seconds.");
             return;
         }
-        Location anchor = startSpot(e);
+        Location anchor = goal == Goal.KINGDOM_HANGOUT ? hangoutAnchor(p) : startSpot(e);
         if (anchor == null) {
-            Msg.error(p, e.name + "'s world isn't loaded.");
+            Msg.error(p, (e != null ? e.name + "'s" : "Your") + " world isn't loaded.");
             return;
         }
         Saved saved = new Saved(p.getLocation().clone(), p.getGameMode(), p.getAllowFlight(), p.isFlying(), p.getFlySpeed(),
                 p.isInvulnerable(), p.isCollidable(), p.getCanPickupItems());
         p.getPersistentDataContainer().set(savedKey, PersistentDataType.STRING, saved.save());
-        Session s = new Session(p, e, goal, saved, anchor);
+        Session s = new Session(p, e, goal, saved, anchor, hangoutName);
         sessions.put(p.getUniqueId(), s);
 
         s.body = spawnBody(p);
@@ -230,12 +241,22 @@ public final class OutOfBody implements Listener {
                     case STORAGE -> "Left-click the chest " + e.name + " delivers to";
                     case PANTRY -> "Left-click the chest " + e.name + " eats from";
                     case ZONE -> "Left-click two corners of the zone " + e.name + " should leave alone";
-                    case HANGOUT -> "Left-click two corners of the hangout spot";
+                    case KINGDOM_HANGOUT -> "Left-click two corners of \"" + hangoutName + "\"";
                 }, NamedTextColor.GRAY)));
         Msg.send(p, "<aqua>You've left your body.</aqua> <gray>Fly about (space up, shift down) and look where you mean."
                 + " <white>Left-click</white> to pick, <white>right-click</white> (holding anything) to go back a step,"
                 + " <white>F</white> (swap hands) to cancel.");
         s.task = Bukkit.getScheduler().runTaskTimer(plugin, () -> tick(s), 1L, 2L);
+    }
+
+    /** Over wherever the player is standing, high enough to look down on it: for a kingdom hangout spot, which isn't about any one site. */
+    private static Location hangoutAnchor(Player p) {
+        Location base = p.getLocation().clone();
+        World w = base.getWorld();
+        if (w == null) return null;
+        int ground = w.getHighestBlockYAt(base.getBlockX(), base.getBlockZ());
+        base.setY(Math.min(w.getMaxHeight() - 2, Math.max(ground, base.getBlockY()) + 14));
+        return base;
     }
 
     /** Over the work area's middle (or the employee), high enough to look down on it. */
@@ -310,7 +331,7 @@ public final class OutOfBody implements Listener {
             end(s, "<gray>Back in your body: you were out for five minutes. Nothing was changed.");
             return;
         }
-        if (!plugin.manager().all().contains(s.e)) {
+        if (s.e != null && !plugin.manager().all().contains(s.e)) {
             end(s, "<gray>Back in your body: " + s.e.name + " doesn't work for you any more.");
             return;
         }
@@ -327,7 +348,7 @@ public final class OutOfBody implements Listener {
             p.teleport(back);
             s.moving = false;
             p.setFlying(true);
-            p.sendActionBar(Component.text("You can't float further than " + RANGE + " blocks from " + s.e.name + "'s site.", NamedTextColor.RED));
+            p.sendActionBar(Component.text("You can't float further than " + RANGE + " blocks from " + (s.e != null ? s.e.name + "'s site" : "where you started") + ".", NamedTextColor.RED));
             return;
         }
         if (!p.isFlying()) p.setFlying(true);
@@ -342,14 +363,11 @@ public final class OutOfBody implements Listener {
         }
 
         World w = p.getWorld();
-        Settings.JobSettings js = plugin.settings().job(s.e.job);
+        Settings.JobSettings js = s.e != null ? plugin.settings().job(s.e.job) : null;
         if (s.a == null) {
             if (look != null) cursor(p, look);
             p.sendActionBar(Msg.parse("<yellow>Left-click: first corner <dark_gray>· <gray>F: cancel"));
             if (s.goal == Goal.AREA && s.e.area != null && s.ticks % 10 == 0) outline(p, s.e.area, CURSOR, 2);   // the area as it is now
-            if (s.goal == Goal.HANGOUT && s.e.build != null && s.e.build.hangoutArea != null && s.ticks % 10 == 0) {
-                outline(p, s.e.build.hangoutArea, CURSOR, 2);   // the hangout area as it is now
-            }
             return;
         }
         BlockPos other = s.depthStep ? s.b : look == null ? null : BlockPos.of(look);
@@ -360,13 +378,14 @@ public final class OutOfBody implements Listener {
         }
         WorkArea area = build(s, other);
         int wide = area.width(), longSide = area.length();
-        boolean tooBig = wide > js.maxAreaSize() || longSide > js.maxAreaSize();
+        int maxSize = js != null ? js.maxAreaSize() : MAX_HANGOUT_SIZE;
+        boolean tooBig = wide > maxSize || longSide > maxSize;
         outline(p, area, tooBig ? BAD : EDGE, wide + longSide > 120 ? 2 : 1);
         corner(p, s.a);
         corner(p, other);
         String size = wide + " × " + longSide + (s.depthStep ? " · " + area.height() + " deep (y " + area.minY() + " to " + area.maxY() + ")" : "");
         if (tooBig) {
-            p.sendActionBar(Msg.parse("<red>" + size + ": too big (most " + js.maxAreaSize() + " × " + js.maxAreaSize() + ")"));
+            p.sendActionBar(Msg.parse("<red>" + size + ": too big (most " + maxSize + " × " + maxSize + ")"));
         } else if (s.depthStep) {
             p.sendActionBar(Msg.parse("<white>" + size + " <dark_gray>· <yellow>scroll: deeper/shallower · left-click: done <dark_gray>· <gray>right-click: back"));
         } else {
@@ -382,7 +401,7 @@ public final class OutOfBody implements Listener {
     /** The area from the first corner to {@code other}: an exact box for a zone, or as hiring would make it there (and the depth picked, if any). */
     private WorkArea build(Session s, BlockPos other) {
         World w = s.p.getWorld();
-        if (s.goal == Goal.ZONE || s.goal == Goal.HANGOUT) {
+        if (s.goal == Goal.ZONE || s.goal == Goal.KINGDOM_HANGOUT) {
             int low = Math.min(s.a.y(), other.y()), high = Math.max(s.a.y(), other.y());
             return WorkArea.of(w.getName(), s.a.x(), low, s.a.z(), other.x(), high, other.z());
         }
@@ -426,7 +445,7 @@ public final class OutOfBody implements Listener {
             chest(s, look);
             return;
         }
-        Settings.JobSettings js = plugin.settings().job(s.e.job);
+        Settings.JobSettings js = s.e != null ? plugin.settings().job(s.e.job) : null;
         if (s.a == null) {
             if (look == null) return;
             s.a = BlockPos.of(look);
@@ -437,9 +456,10 @@ public final class OutOfBody implements Listener {
             if (look == null) return;
             BlockPos other = BlockPos.of(look);
             WorkArea area = build(s, other);
-            if (area.width() > js.maxAreaSize() || area.length() > js.maxAreaSize()) {
-                Msg.error(p, "That's " + area.width() + " × " + area.length() + "; the most for a " + s.e.job.display().toLowerCase(Locale.ROOT)
-                        + " is " + js.maxAreaSize() + " × " + js.maxAreaSize() + ".");
+            int maxSize = js != null ? js.maxAreaSize() : MAX_HANGOUT_SIZE;
+            if (area.width() > maxSize || area.length() > maxSize) {
+                Msg.error(p, "That's " + area.width() + " × " + area.length() + "; the most for " + (js != null ? "a " + s.e.job.display().toLowerCase(Locale.ROOT) : "a hangout spot")
+                        + " is " + maxSize + " × " + maxSize + ".");
                 return;
             }
             s.b = other;
@@ -456,7 +476,7 @@ public final class OutOfBody implements Listener {
     }
 
     private void back(Session s) {
-        if (s.goal != Goal.AREA && s.goal != Goal.ZONE && s.goal != Goal.HANGOUT) return;
+        if (s.goal != Goal.AREA && s.goal != Goal.ZONE && s.goal != Goal.KINGDOM_HANGOUT) return;
         if (s.depthStep) {
             s.depthStep = false;
             s.b = null;
@@ -495,6 +515,7 @@ public final class OutOfBody implements Listener {
         Employee e = s.e;
         Player p = s.p;
         Goal goal = s.goal;
+        String hangoutName = s.hangoutName;
         end(s, null);
         if (goal == Goal.ZONE) {
             e.zones.add(area);
@@ -503,12 +524,14 @@ public final class OutOfBody implements Listener {
             e.worker.interrupt();
             String what = e.job == JobType.BODYGUARD ? "leaves mobs alone" : "won't work";
             Msg.send(p, "<green>" + e.name + " " + what + " in <white>" + area.describe() + "</white> (y " + area.minY() + " to " + area.maxY() + ") now.");
-        } else if (goal == Goal.HANGOUT) {
-            e.build.hangoutArea = area;
-            plugin.manager().markDirty();
-            Msg.send(p, "<green>Hangout spot set: <white>" + area.describe() + "</white> (y " + area.minY() + " to " + area.maxY() + ")."
-                    + (e.build.hangoutLabel == null ? " <gray>Give it a name too with the Hangout spot button, or /employees build "
-                        + e.name + " label \\<text>, so it actually counts as one." : ""));
+        } else if (goal == Goal.KINGDOM_HANGOUT) {
+            UUID kingdomOwner = plugin.kingdomBridge().kingdomOwnerOf(p.getUniqueId());
+            if (kingdomOwner == null) {
+                Msg.error(p, "You're not in a kingdom any more; the spot wasn't saved.");
+                return;
+            }
+            plugin.hangoutSpots().add(kingdomOwner, new site.remotearc.employees.HangoutSpots.Spot(hangoutName, area));
+            Msg.send(p, "<green>\"" + Describe.esc(hangoutName) + "\" is now a hangout spot: <white>" + area.describe() + "</white> (y " + area.minY() + " to " + area.maxY() + ").");
         } else {
             plugin.manager().setArea(e, area);
             Msg.send(p, "<green>" + e.name + " now works in <white>" + area.describe() + "</white> (y " + area.minY() + " to " + area.maxY() + ").");

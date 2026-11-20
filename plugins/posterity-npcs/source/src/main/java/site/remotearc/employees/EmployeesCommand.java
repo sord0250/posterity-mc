@@ -41,10 +41,10 @@ final class EmployeesCommand implements TabExecutor {
     private static final Pattern MC_NAME = Pattern.compile("[A-Za-z0-9_]{3,16}");
     private static final List<String> SUBS = List.of("plan", "help", "hire", "list", "info", "fire", "rename", "skin", "area",
             "storage", "pantry", "pause", "resume", "move", "jobs", "filter", "supply", "herd", "build", "blueprints", "board", "chests",
-"sell", "market", "zone", "toggle", "follow", "stay", "roam", "avatar", "avatars", "trades", "craft", "presets", "away", "report", "profit", "route", "repair", "trust", "untrust", "manage", "pauseall", "resumeall", "toggleall", "link", "unlink", "debug", "stalls", "house", "home", "homes");
+"sell", "market", "hangouts", "zone", "toggle", "follow", "stay", "roam", "avatar", "avatars", "trades", "craft", "presets", "away", "report", "profit", "route", "repair", "trust", "untrust", "manage", "pauseall", "resumeall", "toggleall", "link", "unlink", "debug", "stalls", "house", "home", "homes");
     /** Subcommands that don't name an employee. */
     private static final List<String> GLOBAL = List.of("plan", "help", "hire", "list", "jobs", "blueprints", "board", "chests", "market",
-            "pauseall", "resumeall", "toggleall", "link", "unlink", "menu", "avatars", "presets", "report", "profit", "trust",
+            "hangouts", "pauseall", "resumeall", "toggleall", "link", "unlink", "menu", "avatars", "presets", "report", "profit", "trust",
             "untrust", "manage", "homes");
     private static final List<String> ADMIN_SUBS = List.of("all", "reload", "config", "unlock", "lock", "greeter");
 
@@ -80,6 +80,7 @@ final class EmployeesCommand implements TabExecutor {
             case "board", "boards" -> jobs.board(s, label, args);
             case "chests", "chest" -> jobs.chests(s, label, args);
             case "market", "shop", "merchant" -> jobs.market(s, label, args);
+            case "hangouts", "hangout" -> hangouts(s, args);
             case "pauseall", "resumeall", "toggleall" -> pauseAll(s, sub);
             case "plan" -> {
                 if (!(s instanceof Player p)) return true;
@@ -388,6 +389,65 @@ final class EmployeesCommand implements TabExecutor {
         }
         Msg.send(p, pause ? "<gray>Paused " + n + " employee(s). Their paid time is kept for when they resume."
                 : "<green>" + n + " employee(s) back at work.");
+    }
+
+    /**
+     * /employees hangouts [list|add \<name>|remove \<name>]: named areas where
+     * off-duty employees of this player's kingdom gather instead of just
+     * loitering at their own post. With no arguments, opens the menu (also
+     * reachable from the kingdom menu's "NPC hangout spots" button).
+     */
+    private void hangouts(CommandSender s, String[] args) {
+        if (!(s instanceof Player p)) {
+            Msg.error(s, "Only players have a kingdom.");
+            return;
+        }
+        UUID kingdomOwner = plugin.kingdomBridge().kingdomOwnerOf(p.getUniqueId());
+        if (kingdomOwner == null) {
+            Msg.error(p, "You're not in a kingdom.");
+            return;
+        }
+        String mode = args.length > 1 ? args[1].toLowerCase(Locale.ROOT) : "";
+        switch (mode) {
+            case "", "list" -> {
+                if (mode.isEmpty()) {
+                    new site.remotearc.employees.gui.HangoutSpotsMenu(plugin, kingdomOwner).open(p);
+                    return;
+                }
+                List<HangoutSpots.Spot> spots = plugin.hangoutSpots().of(kingdomOwner);
+                if (spots.isEmpty()) {
+                    Msg.send(p, "<gray>No hangout spots yet. Add one with <white>/employees hangouts add \\<name></white>.");
+                    return;
+                }
+                Msg.send(p, "<gray>" + spots.size() + " hangout spot(s):");
+                for (HangoutSpots.Spot spot : spots) {
+                    s.sendMessage(Msg.parse("<gold> - " + Describe.esc(spot.name()) + "</gold> <gray>" + spot.area().describe()
+                            + " in " + Describe.esc(spot.area().world())));
+                }
+            }
+            case "add" -> {
+                if (args.length < 3) {
+                    Msg.error(p, "Usage: /employees hangouts add <name>");
+                    return;
+                }
+                String name = String.join(" ", java.util.Arrays.copyOfRange(args, 2, args.length));
+                if (name.length() > 40) {
+                    Msg.error(p, "Keep it to 40 characters or fewer.");
+                    return;
+                }
+                site.remotearc.employees.gui.OutOfBody.startForHangout(plugin, p, name);
+            }
+            case "remove" -> {
+                if (args.length < 3) {
+                    Msg.error(p, "Usage: /employees hangouts remove <name>");
+                    return;
+                }
+                String name = String.join(" ", java.util.Arrays.copyOfRange(args, 2, args.length));
+                if (plugin.hangoutSpots().remove(kingdomOwner, name)) Msg.send(p, "<gray>Removed the hangout spot \"" + Describe.esc(name) + "\".");
+                else Msg.error(p, "No hangout spot called \"" + Describe.esc(name) + "\".");
+            }
+            default -> Msg.error(p, "Usage: /employees hangouts [list | add <name> | remove <name>]");
+        }
     }
 
     /**
@@ -1471,6 +1531,16 @@ final class EmployeesCommand implements TabExecutor {
     public List<String> onTabComplete(@NotNull CommandSender s, @NotNull Command cmd, @NotNull String alias, String @NotNull [] args) {
         List<String> out = new ArrayList<>();
         String first = args[0].toLowerCase(Locale.ROOT);
+        if (first.equals("hangouts") || first.equals("hangout")) {
+            if (args.length == 2) for (String o : List.of("list", "add", "remove")) if (o.startsWith(args[1].toLowerCase(Locale.ROOT))) out.add(o);
+            else if (args.length == 3 && args[1].equalsIgnoreCase("remove") && s instanceof Player p) {
+                UUID kingdomOwner = plugin.kingdomBridge().kingdomOwnerOf(p.getUniqueId());
+                for (HangoutSpots.Spot spot : plugin.hangoutSpots().of(kingdomOwner)) {
+                    if (spot.name().toLowerCase(Locale.ROOT).startsWith(args[2].toLowerCase(Locale.ROOT))) out.add(spot.name());
+                }
+            }
+            return out;
+        }
         if (first.equals("market") && args.length == 2) {
             for (String o : List.of("prices", "place", "remove")) if (o.startsWith(args[1].toLowerCase(Locale.ROOT))) out.add(o);
             return out;

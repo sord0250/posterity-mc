@@ -42,6 +42,7 @@ public final class ArcEmployees extends JavaPlugin {
     private site.remotearc.employees.util.BlockLog blockLog;
     private Market market;
     private site.remotearc.employees.board.Links links;
+    private HangoutSpots hangoutSpots;
     private site.remotearc.employees.board.Avatars avatars;
     private VillagerHiring villagerHiring;
     private Greeter greeter;
@@ -107,6 +108,7 @@ public final class ArcEmployees extends JavaPlugin {
         uploads.start();
         links = new site.remotearc.employees.board.Links(this);
         getServer().getPluginManager().registerEvents(links, this);
+        hangoutSpots = new HangoutSpots(this);
 
         StudioWorld studio = new StudioWorld(this);
         studio.load();
@@ -292,6 +294,7 @@ public final class ArcEmployees extends JavaPlugin {
     public site.remotearc.employees.util.BlockLog blockLog() { return blockLog; }
     public Market market() { return market; }
     public site.remotearc.employees.board.Links links() { return links; }
+    public HangoutSpots hangoutSpots() { return hangoutSpots; }
     public site.remotearc.employees.board.Avatars avatars() { return avatars; }
     public Greeter greeter() { return greeter; }
     public VillagerHiring villagerHiring() { return villagerHiring; }

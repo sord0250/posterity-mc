@@ -2,15 +2,16 @@ package site.remotearc.employees.job;
 
 import org.bukkit.util.Vector;
 import site.remotearc.employees.Employee;
+import site.remotearc.employees.HangoutSpots;
 import site.remotearc.employees.util.WorkArea;
 
+import java.util.UUID;
+
 /**
- * Builds a build labels as a hangout spot (a tavern, a park...) with
- * {@code /employees build <name> label <text>}, optionally with an exact
- * area to stand in (picked out of body: the build menu's "Pick the hangout
- * spot's area" button) instead of always the build's own placement point.
- * Off duty, an employee may wander there instead of just loitering at its
- * own post - see {@link Distractions#relax}.
+ * Finds a kingdom hangout spot (named areas managed from the kingdom menu's
+ * "NPC hangout spots" button, or {@code /employees hangouts}) for an
+ * off-duty employee to wander to instead of just loitering at its own post
+ * - see {@link Distractions#relax}.
  */
 final class Hangouts {
 
@@ -21,25 +22,22 @@ final class Hangouts {
 
     record Spot(Vector at, String label) {}
 
-    /** A labeled, finished build this employee's owner (or whoever trusts them) has set up, nearest first; null if none is in reach. */
+    /** The nearest in-reach hangout spot of this employee's owner's kingdom, or null (no kingdom, or none close enough). */
     static Spot find(Worker w) {
         Employee e = w.e;
+        UUID kingdomOwner = w.plugin().kingdomBridge().kingdomOwnerOf(e.owner);
+        if (kingdomOwner == null) return null;
         Vector here = e.location.toVector();
         Spot best = null;
         double bestD = MAX_DISTANCE * MAX_DISTANCE;
-        for (Employee o : w.plugin().manager().all()) {
-            var build = o.build;
-            if (build == null || build.hangoutLabel == null || build.hangoutLabel.isBlank() || !build.finished) continue;
-            if (!build.world.equals(w.world().getName())) continue;
-            if (!o.owner.equals(e.owner) && !w.plugin().managers().trusts(o.owner, e.owner)) continue;
-            WorkArea area = build.hangoutArea;
-            Vector center = area != null ? new Vector((area.minX() + area.maxX()) / 2.0 + 0.5, area.minY(), (area.minZ() + area.maxZ()) / 2.0 + 0.5)
-                    : new Vector(build.x + 0.5, build.y, build.z + 0.5);
+        for (HangoutSpots.Spot spot : w.plugin().hangoutSpots().of(kingdomOwner)) {
+            WorkArea area = spot.area();
+            if (!area.world().equals(w.world().getName())) continue;
+            Vector center = new Vector((area.minX() + area.maxX()) / 2.0 + 0.5, area.minY(), (area.minZ() + area.maxZ()) / 2.0 + 0.5);
             double d = center.distanceSquared(here);
             if (d < bestD) {
                 bestD = d;
-                Vector at = area != null ? randomIn(w, area) : center;
-                best = new Spot(at, build.hangoutLabel);
+                best = new Spot(randomIn(w, area), spot.name());
             }
         }
         return best;

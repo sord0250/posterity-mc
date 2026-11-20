@@ -66,6 +66,10 @@ public final class KingdomMenu {
         b.add(Dialogs.button("<green>Buy a flag (" + plugin.settings().flagEmeralds + " emeralds)",
                 k.flagBase == null ? "<gray>" + k.name + " has no flag design yet." : "<gray>A copy of " + k.name + "'s flag.",
                 pl -> pl.performCommand("kingdom flag buy")));
+        if (hasEmployees()) {
+            b.add(Dialogs.button("<aqua>NPC hangout spots", "<gray>Name areas where your off-duty NPCs gather instead of"
+                    + " loitering at their own post. See, add or remove them.", pl -> pl.performCommand("employees hangouts")));
+        }
         if (owner || admin) {
             String rulerNote = k.rulers.isEmpty() ? "" : ", and " + k.rulers.size() + " ruler(s) lose their place in it";
             b.add(Dialogs.button("<red>Disband " + k.name, "<gray>Its Core stops being claimed (anyone can claim that spot, or"
@@ -111,6 +115,11 @@ public final class KingdomMenu {
         } catch (ReflectiveOperationException | RuntimeException ex) {
             return -1;
         }
+    }
+
+    private static boolean hasEmployees() {
+        var employees = Bukkit.getPluginManager().getPlugin("ArcEmployees");
+        return employees != null && employees.isEnabled();
     }
 
     private static int maxPerKingdom() {

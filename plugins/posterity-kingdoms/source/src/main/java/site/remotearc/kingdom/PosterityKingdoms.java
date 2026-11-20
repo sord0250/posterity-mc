@@ -79,4 +79,17 @@ public final class PosterityKingdoms extends JavaPlugin {
         Kingdom k = p.kingdoms.of(player);
         return k == null ? null : k.name;
     }
+
+    /**
+     * For other plugins: the UUID of whoever owns this player's kingdom
+     * (themselves, if they're the owner; the owner, if they're only a
+     * ruler), or null. A stable identity to key things by, unlike a
+     * kingdom's name, which can change if it's disbanded and refounded.
+     */
+    public static UUID kingdomOwnerOf(UUID player) {
+        PosterityKingdoms p = instance;
+        if (p == null || !p.isEnabled()) return null;
+        Kingdom k = p.kingdoms.of(player);
+        return k == null ? null : k.owner;
+    }
 }
