@@ -114,6 +114,22 @@ public final class Distractions {
         return own;
     }
 
+    /**
+     * Nothing to do right now (no materials, no targets, no furnaces...): a
+     * short visit to a hangout spot instead of just standing about. A
+     * bodyguard following its owner never takes this (see wandersHome).
+     * Short, like relax's own visits, so it keeps checking back for real
+     * work between them rather than committing to one long enough to miss it.
+     */
+    static Task idleHangout(Worker w) {
+        if (!w.e.isLoaded() || !w.job.wandersHome(w)) return null;
+        Hangouts.Spot spot = Hangouts.find(w);
+        if (spot == null) return null;
+        Hangout h = new Hangout(spot.at(), spot.label(), ticks(w.random()));
+        h.label = "Nothing to do right now";
+        return h;
+    }
+
     /** Night: off to bed (its home's if it can get there, otherwise any free bed nearby), and asleep until morning. */
     static Task sleep(Worker w) {
         return w.e.isLoaded() ? new Sleep() : null;
@@ -129,6 +145,8 @@ public final class Distractions {
     /** Sleeps until the night is over (the worker interrupts it when work starts); stays awake if it has no bed to use. */
     static final class Sleep extends Distraction {
         private Vector bed;
+        /** Which way to face once lying down: toward the foot of the bed. */
+        private org.bukkit.block.BlockFace faceFoot;
         private Pathfinder.Goal goal;
         private boolean there;
         private String claimed;   // the loose bed's key, while held
@@ -142,13 +160,20 @@ public final class Distractions {
         void start(Worker w) {
             var h = w.e.house;
             if (h != null && h.world.equals(w.world().getName()) && loaded(w.world(), h.bed.x(), h.bed.z())) {
-                Vector v = new Vector(h.bed.x() + 0.5, h.bed.y(), h.bed.z() + 0.5);
-                if (v.distanceSquared(w.e.location.toVector()) <= 96 * 96) bed = v;
+                Block head = h.bed.block(w.world());
+                if (head.getBlockData() instanceof org.bukkit.block.data.type.Bed b) {
+                    Vector v = new Vector(h.bed.x() + 0.5, h.bed.y(), h.bed.z() + 0.5);
+                    if (v.distanceSquared(w.e.location.toVector()) <= 96 * 96) {
+                        bed = v;
+                        faceFoot = b.getFacing().getOppositeFace();
+                    }
+                }
             }
             if (bed == null) {
                 Block head = nearestBlock(w, b -> freeBed(w, b));
-                if (head != null) {
+                if (head != null && head.getBlockData() instanceof org.bukkit.block.data.type.Bed b) {
                     bed = new Vector(head.getX() + 0.5, head.getY(), head.getZ() + 0.5);
+                    faceFoot = b.getFacing().getOppositeFace();
                     claimed = bedKey(w.world(), head);
                     LOOSE_BEDS_IN_USE.add(claimed);
                 }
@@ -179,7 +204,8 @@ public final class Distractions {
                 return Result.RUNNING;
             }
             if (!there) {
-                if (goal == null) goal = Pathfinder.near(bed.getX(), bed.getY(), bed.getZ(), 1.5, 3, 2);
+                // Tight on height: loose enough and it's "close enough" from a loft or attic floor above the bed, not just the room it's actually in.
+                if (goal == null) goal = Pathfinder.near(bed.getX(), bed.getY(), bed.getZ(), 1.2, 0.6, 0.6);
                 Worker.Move m = w.walk(goal, bed);   // the bed as target: the path search reaches past the work area
                 if (m == Worker.Move.MOVING) return Result.RUNNING;
                 if (m == Worker.Move.FAILED) {
@@ -189,6 +215,9 @@ public final class Distractions {
                     return Result.RUNNING;
                 }
                 there = true;
+                // Snap onto the bed itself (rather than wherever it happened to stop beside it) and face down its length.
+                w.moveTo(bed.getX(), bed.getY(), bed.getZ());
+                if (faceFoot != null) w.lookAt(bed.getX() + faceFoot.getModX(), bed.getY(), bed.getZ() + faceFoot.getModZ());
             }
             pose(w, Pose.SLEEPING);
             return Result.RUNNING;

@@ -292,6 +292,7 @@ public final class Worker {
             }
             if (job.movement() != Job.Movement.FLY && cooldownReady("settle", 100)) settle();
             task = choose();
+            if (task == null) task = Distractions.idleHangout(this);
             if (task == null) {
                 cooldown = 40;
                 if (e.debug && cooldownReady("debug-idle", 100)) plugin.getLogger().info("[debug " + e.name + "] idle: " + idleReason()
